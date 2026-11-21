@@ -674,7 +674,7 @@ public final class MarketCommand {
             Messages.sendFail(source, "背包里没有 " + item.nameZh);
             return;
         }
-        long unit = ctx().market.price(item.id);
+        long unit = TradeService.displayPriceCents(ctx(), item.id);
         if (unit <= 0L) {
             unit = item.basePriceCents;
         }
@@ -840,11 +840,11 @@ public final class MarketCommand {
     }
 
     private static void performPrice(CommandSourceStack source, MarketStore.CatalogItem item) {
-        long price = ctx().market.price(item.id);
+        long price = TradeService.displayPriceCents(ctx(), item.id);
         Messages.send(source, item.nameZh + "（" + item.id + "）现价 " + Messages.money(price)
                 + "｜买价 " + Messages.money(TradeService.effectiveAskCents(ctx(), item.id))
                 + "｜回收价 " + Messages.money(TradeService.effectiveBidCents(ctx(), item.id)));
-        Messages.sendInfo(source, "基准价 " + Messages.money(item.basePriceCents)
+        Messages.sendInfo(source, "基准价 " + Messages.money(TradeService.displayPriceCents(ctx(), item.id))
                 + "｜波动 " + Messages.percent(item.volatility) + "｜流动性 " + Messages.money(item.liquidity));
     }
 
@@ -1313,7 +1313,7 @@ public final class MarketCommand {
             Messages.sendFail(source, "目录里没有这个物品：" + itemText);
             return 0;
         }
-        long price = ctx().market.price(item.id);
+        long price = TradeService.displayPriceCents(ctx(), item.id);
         Messages.send(source, item.nameZh + "（" + item.id + "）现价 " + Messages.money(price)
                 + "｜买价 " + Messages.money(TradeService.effectiveAskCents(ctx(), item.id))
                 + "｜回收价 " + Messages.money(TradeService.effectiveBidCents(ctx(), item.id)));
@@ -1333,8 +1333,8 @@ public final class MarketCommand {
         }
         List<String> lines = new ArrayList<>();
         for (MarketStore.CatalogItem item : ctx().market.enabledItems()) {
-            long price = ctx().market.price(item.id);
-            double ratio = item.basePriceCents <= 0 ? 0 : (double) price / item.basePriceCents - 1.0;
+            long price = TradeService.displayPriceCents(ctx(), item.id);
+            double ratio = item.basePriceCents <= 0 ? 0 : (double) ctx().market.price(item.id) / item.basePriceCents - 1.0;
             lines.add(item.nameZh + " " + Messages.money(TradeService.effectiveAskCents(ctx(), item.id))
                     + "/" + Messages.money(TradeService.effectiveBidCents(ctx(), item.id))
                     + " " + Messages.changeText(ratio));
@@ -1654,7 +1654,7 @@ public final class MarketCommand {
                 if (count++ >= 8) {
                     break;
                 }
-                lines.add(item.nameZh + " " + Messages.money(ctx.market.price(item.id))
+                lines.add(item.nameZh + " " + Messages.money(TradeService.displayPriceCents(ctx, item.id))
                         + "（买 " + Messages.money(TradeService.effectiveAskCents(ctx, item.id)) + "）");
             }
         } else if (t.contains("期货")) {
@@ -2097,7 +2097,7 @@ public final class MarketCommand {
         String name = handItemName(player);
         MarketStore.CatalogItem item = ctx().market.item(id);
         if (item != null) {
-            Messages.send(source, "手上：" + item.nameZh + "（" + id + "）现价 " + Messages.money(ctx().market.price(id)));
+            Messages.send(source, "手上：" + item.nameZh + "（" + id + "）现价 " + Messages.money(TradeService.displayPriceCents(ctx(), id)));
         } else {
             Messages.send(source, "手上：" + name + "（" + id + "）还没上市；说 /ex 买手上的 <数量> 会自动估价上市。");
         }
@@ -2436,7 +2436,7 @@ public final class MarketCommand {
                     if (item == null) {
                         sink.accept(ActionResult.fail("要点哪个物品的价格？"));
                     } else {
-                        sink.accept(ActionResult.ok(item.nameZh + " 现价 " + Messages.money(ctx.market.price(item.id))
+                        sink.accept(ActionResult.ok(item.nameZh + " 现价 " + Messages.money(TradeService.displayPriceCents(ctx, item.id))
                                 + "，买价 " + Messages.money(TradeService.effectiveAskCents(ctx, item.id))
                                 + "，回收价 " + Messages.money(TradeService.effectiveBidCents(ctx, item.id))));
                     }

@@ -64,7 +64,7 @@ public final class TradeService {
                 spread = Cents.clampDouble(ctx.settings.askSpread, 0.0, 1.0);
             }
             long raw = ctx.market.askRawCents(item.id, spread);
-            return applyPolicyMultiplier(ctx, item.id, raw);
+            return MarketPricing.priceCents(ctx, applyPolicyMultiplier(ctx, item.id, raw));
         } catch (RuntimeException error) {
             Log.warn("计算买价失败（" + itemId + "）", error);
             return 1L;
@@ -88,9 +88,21 @@ public final class TradeService {
                 ratio = Cents.clampDouble(ctx.settings.bidRatio, 0.01, 1.0);
             }
             long raw = ctx.market.bidRawCents(item.id, ratio);
-            return applyPolicyMultiplier(ctx, item.id, raw);
+            return MarketPricing.priceCents(ctx, applyPolicyMultiplier(ctx, item.id, raw));
         } catch (RuntimeException error) {
             Log.warn("计算回收价失败（" + itemId + "）", error);
+            return 1L;
+        }
+    }
+
+    /** 展示用现价（分）：基础价 × 物价系数。 */
+    public static long displayPriceCents(AimcContext ctx, String itemId) {
+        try {
+            if (ctx == null || ctx.market == null || itemId == null) {
+                return 1L;
+            }
+            return MarketPricing.priceCents(ctx, ctx.market.price(itemId));
+        } catch (RuntimeException error) {
             return 1L;
         }
     }
@@ -190,8 +202,10 @@ public final class TradeService {
         } catch (ArithmeticException overflow) {
             return ActionResult.fail("金额太大，单笔订单超出上限");
         }
-        if (settings.maxOrderValueCents > 0L && total > settings.maxOrderValueCents) {
-            return ActionResult.fail("单笔最多 " + Cents.format(settings.maxOrderValueCents)
+        long maxOrderValue = settings.maxOrderValueCents > 0L
+                ? Math.round(settings.maxOrderValueCents * MarketPricing.scale(ctx)) : 0L;
+        if (maxOrderValue > 0L && total > maxOrderValue) {
+            return ActionResult.fail("单笔最多 " + Cents.format(maxOrderValue)
                     + " 币，本次要 " + Cents.format(total) + " 币，减点数量吧");
         }
         long balance = account.balanceCents();

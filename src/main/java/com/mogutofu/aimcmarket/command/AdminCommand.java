@@ -219,6 +219,7 @@ public final class AdminCommand {
         for (String line : top) {
             Messages.sendInfo(source, line);
         }
+        Messages.sendInfo(source, com.mogutofu.aimcmarket.engine.MarketPricing.describe(ctx));
         Messages.sendInfo(source, "AI 链路：" + (ctx.ai == null ? "关闭" : ctx.settings.aiMode
                 + "（最近 " + ctx.ai.lastRoute() + "）") + "｜预算 " + ctx.settings.aiHourlyBudget + " 次/小时");
         return Command.SINGLE_SUCCESS;
