@@ -107,16 +107,14 @@ public final class MarketCommand {
                         .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
                         .executes(context -> stockList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("buy")
-                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
-                                .then(Commands.argument("shares", LongArgumentType.longArg(1, 10_000_000))
-                                        .executes(MarketCommand::stockBuy))))
+                        .then(Commands.argument("args", StringArgumentType.greedyString())
+                                .executes(context -> stockTradeArgs(context, true))))
                 .then(Commands.literal("sell")
-                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
-                                .then(Commands.argument("shares", LongArgumentType.longArg(1, 10_000_000))
-                                        .executes(MarketCommand::stockSell))))
+                        .then(Commands.argument("args", StringArgumentType.greedyString())
+                                .executes(context -> stockTradeArgs(context, false))))
                 .then(Commands.literal("info")
-                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
-                                .executes(MarketCommand::stockInfo))));
+                        .then(Commands.argument("args", StringArgumentType.greedyString())
+                                .executes(MarketCommand::stockInfoArgs))));
         root.then(Commands.literal("fund")
                 .executes(context -> fundList(context, 1))
                 .then(Commands.literal("list").executes(context -> fundList(context, 1))
@@ -1479,10 +1477,30 @@ public final class MarketCommand {
         AimcContext ctx = ctx();
         JsonObject context = new JsonObject();
         context.addProperty("balanceCents", account.balanceCents());
+        // 股票放最前：上下文过长时会被截断，股票列表必须保留，否则 AI 会把「宁德时代」当物品
+        StringBuilder stockLine = new StringBuilder();
+        JsonArray stocks = new JsonArray();
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", stock.code);
+            one.addProperty("name", stock.name);
+            one.addProperty("priceCents", stock.priceCents);
+            one.addProperty("real", stock.realSymbol != null && !stock.realSymbol.isBlank());
+            stocks.add(one);
+            if (stockLine.length() > 0) {
+                stockLine.append("，");
+            }
+            stockLine.append(stock.name).append('=').append(stock.code).append('（')
+                    .append(stock.priceCents / 100.0).append("币/股）");
+        }
+        context.add("stocks", stocks);
+        context.addProperty("stocksLine", stockLine.toString());
+        context.addProperty("stockHint", "买/卖上面这些股票时 action 用 buy_stock/sell_stock，"
+                + "stockCode 填括号里的代码，quantity=股数。");
         JsonArray namespaces = new JsonArray();
         int nsCount = 0;
         for (String namespace : ItemResolver.namespaces()) {
-            if (nsCount++ >= 80) {
+            if (nsCount++ >= 40) {
                 break;
             }
             namespaces.add(namespace);
@@ -1491,7 +1509,7 @@ public final class MarketCommand {
         JsonArray catalog = new JsonArray();
         int count = 0;
         for (MarketStore.CatalogItem item : ctx.market.items()) {
-            if (count++ >= 120) {
+            if (count++ >= 60) {
                 break;
             }
             JsonObject one = new JsonObject();
@@ -1501,19 +1519,6 @@ public final class MarketCommand {
             catalog.add(one);
         }
         context.add("catalog", catalog);
-        // 股票列表（NPC + 现实股票都放进去，AI 才知道"宁德时代"=CATL）
-        JsonArray stocks = new JsonArray();
-        for (StockStore.Stock stock : ctx.stocks.all()) {
-            JsonObject one = new JsonObject();
-            one.addProperty("code", stock.code);
-            one.addProperty("name", stock.name);
-            one.addProperty("priceCents", stock.priceCents);
-            one.addProperty("real", stock.realSymbol != null && !stock.realSymbol.isBlank());
-            stocks.add(one);
-        }
-        context.add("stocks", stocks);
-        context.addProperty("stockHint", "玩家说买/卖股票（宁德时代、茅台、AAPL、苹果…）时，"
-                + "action 用 buy_stock 或 sell_stock，回来 stockCode/stockName 和 quantity=股数。");
         return context;
     }
 
@@ -1696,8 +1701,8 @@ public final class MarketCommand {
     private static JsonObject buildChatContext(Account account) {
         AimcContext ctx = ctx();
         JsonObject context = new JsonObject();
-        context.addProperty("indexPoints", ctx.stocks.indexCentiPoints() / 100.0);
-        context.addProperty("indexChange7d", Math.round(ctx.stocks.indexChange7d(ctx.tradingDay()) * 10000.0) / 10000.0);
+        // 股票列表放最前，避免上下文截断时 AI 看不到现实股票
+        StringBuilder stockLine = new StringBuilder();
         JsonArray stocks = new JsonArray();
         for (StockStore.Stock stock : ctx.stocks.all()) {
             JsonObject one = new JsonObject();
@@ -1705,11 +1710,20 @@ public final class MarketCommand {
             one.addProperty("name", stock.name);
             one.addProperty("sector", stock.sector);
             one.addProperty("priceCents", stock.priceCents);
-            one.addProperty("change", Math.round((stock.priceCents / (double) stock.initialPriceCents - 1.0) * 10000.0) / 10000.0);
-            one.addProperty("outlook", stock.lastOutlook);
+            one.addProperty("real", stock.realSymbol != null && !stock.realSymbol.isBlank());
+            if (stock.realSymbol != null) {
+                one.addProperty("realSymbol", stock.realSymbol);
+            }
             stocks.add(one);
+            if (stockLine.length() > 0) {
+                stockLine.append("，");
+            }
+            stockLine.append(stock.name).append('=').append(stock.code).append('（')
+                    .append(stock.priceCents / 100.0).append("币/股）");
         }
         context.add("stocks", stocks);
+        context.addProperty("stocksLine", stockLine.toString());
+        context.addProperty("indexPoints", ctx.stocks.indexCentiPoints() / 100.0);
         JsonArray funds = new JsonArray();
         for (FundStore.Fund fund : ctx.funds.all()) {
             JsonObject one = new JsonObject();
@@ -1747,8 +1761,8 @@ public final class MarketCommand {
             news.add(item.headline);
         }
         context.add("recentNews", news);
-        context.addProperty("help", "常用：/ex stock list 看股票、/ex stock buy 代码 股数 买入、/ex board 看物品行情、"
-                + "/ex price 物品 查价、/ex balance 看余额、/ex news 看新闻、/ex gov status 看政策");
+        context.addProperty("help", "买/卖股票：/ex stock buy|sell <代码或名字> <股数>；看股票：/ex stock list、/ex stock info 宁德时代；"
+                + "买物品：/ex 买 3 个铁锭；收购：/ex 把背包里的 X 收购掉；退货：/ex 退货 X 1");
         return context;
     }
 
@@ -2078,7 +2092,8 @@ public final class MarketCommand {
         StockStore.Stock best = null;
         int bestLength = 0;
         for (StockStore.Stock stock : ctx.stocks.all()) {
-            if (stock.name != null && stock.name.length() >= 2 && value.contains(stock.name)
+            if (stock.name != null && stock.name.length() >= 2
+                    && (value.contains(stock.name) || stock.name.contains(value))
                     && stock.name.length() > bestLength) {
                 best = stock;
                 bestLength = stock.name.length();
@@ -2090,6 +2105,78 @@ public final class MarketCommand {
         // 玩家自己输的代码带大小写/空格
         String upper = value.toUpperCase(java.util.Locale.ROOT);
         return ctx.stocks.stock(upper);
+    }
+
+    /** /ex stock buy|sell <代码或名字> <股数>（greedy，支持"宁德时代"）。 */
+    private static int stockTradeArgs(CommandContext<CommandSourceStack> context, boolean buying) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String raw = text(context, "args").trim();
+        String[] parts = splitLast(raw);
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(source, "用法：/ex stock " + (buying ? "buy" : "sell") + " <代码或名字> <股数>，例：/ex stock buy 宁德时代 100");
+            return 0;
+        }
+        long shares;
+        try {
+            shares = Long.parseLong(parts[1]);
+        } catch (NumberFormatException error) {
+            Messages.sendFail(source, "股数要写整数，例：/ex stock " + (buying ? "buy" : "sell") + " " + parts[0] + " 10");
+            return 0;
+        }
+        if (shares < 1L || shares > 10_000_000L) {
+            Messages.sendFail(source, "股数范围 1 ~ 1000 万");
+            return 0;
+        }
+        StockStore.Stock stock = resolveStockByText(parts[0]);
+        if (stock == null) {
+            Messages.sendFail(source, "没有这只股票：" + parts[0] + "（/ex stock list 看代码和名字）");
+            return 0;
+        }
+        send(source, buying
+                ? FinanceService.buyStock(ctx(), account, stock.code, shares)
+                : FinanceService.sellStock(ctx(), account, stock.code, shares));
+        tickGovernment(source);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** /ex stock info <代码或名字>。 */
+    private static int stockInfoArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String raw = text(context, "args").trim();
+        if (raw.isEmpty()) {
+            Messages.sendFail(source, "用法：/ex stock info <代码或名字>，例：/ex stock info 宁德时代");
+            return 0;
+        }
+        StockStore.Stock resolved = resolveStockByText(raw);
+        if (resolved == null) {
+            Messages.sendFail(source, "没有这只股票：" + raw + "（/ex stock list 看代码和名字）");
+            return 0;
+        }
+        Account account = source.getPlayer() == null ? null : ctx().accounts.get(source.getPlayer().getUUID().toString());
+        String text = FinanceService.stockInfo(ctx(), account, resolved.code);
+        if (text == null || text.isBlank()) {
+            Messages.sendFail(source, "没有这个股票代码");
+            return 0;
+        }
+        Messages.sendLines(source, text);
+        if (resolved.realSymbol != null && !resolved.realSymbol.isBlank()) {
+            String updated = resolved.realUpdatedMs <= 0L ? "还没同步过"
+                    : new java.text.SimpleDateFormat("MM-dd HH:mm:ss").format(new java.util.Date(resolved.realUpdatedMs));
+            Messages.sendInfo(source, "现实行情：" + resolved.realSymbol + "（"
+                    + (resolved.realMarket == null ? "" : resolved.realMarket) + "），当前股价按 "
+                    + resolved.priceCents / 100.0 + " 币映射，更新于 " + updated);
+        }
+        return Command.SINGLE_SUCCESS;
     }
 
     private static int stockBuy(CommandContext<CommandSourceStack> context) {

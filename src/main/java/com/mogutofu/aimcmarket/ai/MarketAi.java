@@ -216,6 +216,7 @@ public final class MarketAi implements AiGateway {
         return "你是 Minecraft 服务器「AIMCmarket」的市场先生，正在游戏里回答玩家问题。\n"
                 + "玩家（普通玩家，只有只读权限）" + player + " 问：" + text + "\n"
                 + "当前市场数据（JSON）：" + contextText(context) + "\n"
+                + "本服可交易股票：" + JsonFile.str(context, "stocksLine", "") + "\n"
                 + "要求：直接用中文口语回答，120 字以内；不要 markdown、不要输出 JSON、不要解释你是 AI；"
                 + "只根据上面的数据回答，不要编造不存在的股票或物品；"
                 + "如果玩家要买卖但物品名服务器不认识（可能是客户端汉化名），告诉他：把该物品拿在主手，"
@@ -340,6 +341,7 @@ public final class MarketAi implements AiGateway {
             request.addProperty("uuid", IDENTITY_UUID);
             request.addProperty("text", "你是 Minecraft 服务器 AIMCmarket 的市场先生。玩家在游戏里说：「" + text + "」\n"
                     + "当前数据（JSON）：" + contextText(context) + "\n"
+                    + "本服可交易股票：" + JsonFile.str(context, "stocksLine", "") + "\n"
                     + "请判断玩家意图：\n"
                     + "1) 想买物品：action=buy；想卖/收购（把背包里的东西卖给市场）：action=sell；想退货（退掉之前在本市场买的）：action=return。\n"
                     + "   quantity = 数量（buy 没说就 1；sell/return 没说就填 0 表示背包里全部），itemName = 玩家原话里的物品叫法；\n"
