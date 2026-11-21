@@ -1467,7 +1467,8 @@ public final class MarketCommand {
                             ? data.get("command").getAsString().trim() : "";
                     if (!command.isEmpty() && isAllowedPlayerCommand(command)) {
                         Messages.sendInfo(source, "市场先生执行：" + command);
-                        boolean done = tryExecuteActionDirect(source, account, command)
+                        boolean done = DirectCommandRunner.run(source, account, command)
+                                || tryExecuteActionDirect(source, account, command)
                                 || executePlayerCommand(source, command);
                         if (done) {
                             Messages.sendOkay(source, "执行完成（结果见上方输出）");
