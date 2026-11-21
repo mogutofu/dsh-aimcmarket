@@ -621,9 +621,9 @@ public final class FinanceService {
             List<String> lines = new ArrayList<>(8);
             lines.add(stock.name + "（" + stock.code + "）｜" + stock.sector + "｜"
                     + (stock.npc ? "NPC 上市公司" : "玩家公司上市公司"));
-            double vsInitial = stock.initialPriceCents <= 0L
-                    ? 0.0 : (double) stock.priceCents / (double) stock.initialPriceCents - 1.0;
-            lines.add("价格 " + Cents.format(stock.priceCents) + " 币/股｜较发行价 " + Cents.formatPercent(vsInitial)
+            double vsInitial = com.mogutofu.aimcmarket.data.StockStore.displayChangeRatio(stock);
+            lines.add("价格 " + Cents.format(stock.priceCents) + " 币/股｜"
+                    + com.mogutofu.aimcmarket.data.StockStore.changeLabel(stock) + " " + Cents.formatPercent(vsInitial)
                     + "｜波动率 " + Cents.formatPercent(stock.volatility)
                     + "｜年化股息率 " + Cents.formatPercent(stock.annualDividendRate));
             long day = ctx.tradingDay();

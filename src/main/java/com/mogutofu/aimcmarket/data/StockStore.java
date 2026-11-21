@@ -60,6 +60,8 @@ public final class StockStore {
         public String realMarket;
         /** 最近一次现实行情同步时间（毫秒）。 */
         public long realUpdatedMs;
+        /** 最近一次现实行情的当日涨跌幅（0.01 = +1%，来自昨收）。 */
+        public double realChangeRatio;
     }
 
     /** 一期财报。 */
@@ -256,6 +258,7 @@ public final class StockStore {
             json.addProperty("realMarket", stock.realMarket);
         }
         json.addProperty("realUpdatedMs", stock.realUpdatedMs);
+        json.addProperty("realChangeRatio", stock.realChangeRatio);
         return json;
     }
 
@@ -291,6 +294,7 @@ public final class StockStore {
         String realMarket = JsonFile.str(json, "realMarket", "");
         stock.realMarket = realMarket.isBlank() ? null : realMarket;
         stock.realUpdatedMs = JsonFile.lng(json, "realUpdatedMs", 0L);
+        stock.realChangeRatio = Cents.clampDouble(JsonFile.dbl(json, "realChangeRatio", 0.0), -1.0, 10.0);
         stock.industryClimateKey = stock.sector;
         return stock;
     }
@@ -351,6 +355,7 @@ public final class StockStore {
         }
         stock.priceCents = Math.max(1L, priceCents);
         stock.realUpdatedMs = updatedMs;
+        stock.realChangeRatio = Double.isFinite(changeRatio) ? changeRatio : 0.0;
         stock.lastOutlook = changeRatio > 0.002 ? "up" : changeRatio < -0.002 ? "down" : "flat";
     }
 
@@ -363,6 +368,24 @@ public final class StockStore {
             }
         }
         return result;
+    }
+
+    /** 展示用涨跌幅：现实股票显示"当日涨跌"（相对昨收），游戏股票显示相对初始价。 */
+    public static double displayChangeRatio(Stock stock) {
+        if (stock == null) {
+            return 0.0;
+        }
+        if (stock.realSymbol != null && !stock.realSymbol.isBlank()) {
+            return Double.isFinite(stock.realChangeRatio) ? stock.realChangeRatio : 0.0;
+        }
+        return stock.initialPriceCents <= 0L ? 0.0
+                : (double) stock.priceCents / (double) stock.initialPriceCents - 1.0;
+    }
+
+    /** 涨跌幅文案前缀：现实股票是"今日涨跌"，游戏股票是"较发行价"。 */
+    public static String changeLabel(Stock stock) {
+        return stock != null && stock.realSymbol != null && !stock.realSymbol.isBlank()
+                ? "今日涨跌" : "较发行价";
     }
 
     // ── 查询 ──

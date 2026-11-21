@@ -1785,8 +1785,7 @@ public final class MarketCommand {
             lines = new java.util.ArrayList<>();
             for (StockStore.Stock stock : ctx.stocks.all()) {
                 long held = account.stockShares(stock.code);
-                double change = stock.initialPriceCents <= 0L ? 0.0
-                        : (double) stock.priceCents / stock.initialPriceCents - 1.0;
+                double change = StockStore.displayChangeRatio(stock);
                 lines.add(stock.code + " " + stock.name + " " + Messages.money(stock.priceCents)
                         + "（" + stock.sector + " " + Messages.changeText(change)
                         + (stock.realSymbol == null ? "" : " ·现实") + "）"
@@ -2716,8 +2715,7 @@ public final class MarketCommand {
         List<String> lines = new ArrayList<>();
         for (StockStore.Stock stock : ctx().stocks.all()) {
             long held = account == null ? 0L : account.stockShares(stock.code);
-            double change = stock.initialPriceCents <= 0L ? 0.0
-                    : (double) stock.priceCents / stock.initialPriceCents - 1.0;
+            double change = StockStore.displayChangeRatio(stock);
             lines.add(stock.code + " " + stock.name + " " + Messages.money(stock.priceCents)
                     + "（" + stock.sector + " " + Messages.changeText(change)
                     + (stock.realSymbol == null ? "" : " ·现实") + "）"

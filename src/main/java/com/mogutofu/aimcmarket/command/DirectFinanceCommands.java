@@ -117,8 +117,7 @@ public final class DirectFinanceCommands {
             }
             long held = account == null ? 0L : account.stockShares(stock.code);
             // 涨跌 = 现价相对发行价（和手动命令口径一致）
-            double change = stock.initialPriceCents <= 0L ? 0.0
-                    : (double) stock.priceCents / (double) stock.initialPriceCents - 1.0;
+            double change = StockStore.displayChangeRatio(stock);
             StringBuilder line = new StringBuilder();
             line.append(stock.code).append(' ');
             line.append(stock.name == null ? stock.code : stock.name).append(' ');
