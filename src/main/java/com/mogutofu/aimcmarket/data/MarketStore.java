@@ -210,6 +210,10 @@ public final class MarketStore {
             if (id.isEmpty() || catalog.containsKey(id)) {
                 continue;
             }
+            if (com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(id)) {
+                Log.info("目录跳过创造类物品：" + id);
+                continue;
+            }
             List<String> aliases = new ArrayList<>();
             for (JsonElement alias : JsonFile.array(item, "aliases")) {
                 try {
@@ -264,6 +268,9 @@ public final class MarketStore {
             throw new IllegalArgumentException("商品 id 不能为空");
         }
         String normalized = id.trim().toLowerCase(Locale.ROOT);
+        if (com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(normalized)) {
+            throw new IllegalStateException(com.mogutofu.aimcmarket.engine.ForbiddenItems.denyMessage());
+        }
         CatalogItem existing = catalog.get(normalized);
         if (existing != null) {
             return existing;

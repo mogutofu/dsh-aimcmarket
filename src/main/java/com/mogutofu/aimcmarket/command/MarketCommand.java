@@ -660,6 +660,11 @@ public final class MarketCommand {
     /** 收购：按当前市场价收玩家背包里的物品（AI 刚定价的物品也算）。 */
     private static void acquireFromPlayer(CommandSourceStack source, Account account,
                                          MarketStore.CatalogItem item, int requested) {
+        if (item != null && com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(item.id)) {
+            Messages.sendFail(source, com.mogutofu.aimcmarket.engine.ForbiddenItems.denyMessage()
+                    + "：" + item.nameZh);
+            return;
+        }
         if (!ready(source) || item == null) {
             return;
         }
@@ -693,6 +698,11 @@ public final class MarketCommand {
     /** 退货：7 天内买的物品按原买入价退款（只退背包里还在的部分）。 */
     private static void returnItem(CommandSourceStack source, Account account,
                                    MarketStore.CatalogItem item, int requested) {
+        if (item != null && com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(item.id)) {
+            Messages.sendFail(source, com.mogutofu.aimcmarket.engine.ForbiddenItems.denyMessage()
+                    + "：" + item.nameZh);
+            return;
+        }
         if (!ready(source) || item == null) {
             return;
         }
@@ -773,6 +783,11 @@ public final class MarketCommand {
     /** 真正执行买/卖（目录里有没有都走这里）。 */
     private static void performBuySell(CommandSourceStack source, Account account, MarketStore.CatalogItem item,
                                        int count, boolean buying) {
+        if (item != null && com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(item.id)) {
+            Messages.sendFail(source, com.mogutofu.aimcmarket.engine.ForbiddenItems.denyMessage()
+                    + "：" + item.nameZh);
+            return;
+        }
         if (account == null || item == null) {
             return;
         }
@@ -869,6 +884,11 @@ public final class MarketCommand {
             Messages.sendFail(source, "市场里找不到这个物品：" + itemText);
             Messages.sendInfo(source, "如果是模组物品，把物品拿在主手说 /ex 买手上的 1；"
                     + "或用 /ex id 查物品 id，再 /ex buy <id> 1。");
+            return;
+        }
+        if (com.mogutofu.aimcmarket.engine.ForbiddenItems.isForbidden(found.id)) {
+            Messages.sendFail(source, com.mogutofu.aimcmarket.engine.ForbiddenItems.denyMessage()
+                    + "：" + found.displayName());
             return;
         }
         Messages.sendInfo(source, "目录里没有「" + found.displayName() + "」，市场先生正在给它定价…");

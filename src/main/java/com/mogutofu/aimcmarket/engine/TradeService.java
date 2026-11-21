@@ -176,6 +176,9 @@ public final class TradeService {
             return ActionResult.fail("管理员冻结了市场交易，稍后再试");
         }
         MarketStore.CatalogItem item = ctx.market.item(itemId);
+        if (item != null && ForbiddenItems.isForbidden(item.id)) {
+            return ActionResult.fail(ForbiddenItems.denyMessage() + "：" + displayName(item));
+        }
         if (item == null) {
             return ActionResult.fail("目录里没有这个物品，用 /ex price 查一下");
         }
@@ -290,6 +293,9 @@ public final class TradeService {
             return ActionResult.fail("管理员冻结了市场交易，稍后再试");
         }
         MarketStore.CatalogItem item = ctx.market.item(itemId);
+        if (item != null && ForbiddenItems.isForbidden(item.id)) {
+            return ActionResult.fail(ForbiddenItems.denyMessage() + "：" + displayName(item));
+        }
         if (item == null) {
             return ActionResult.fail("目录里没有这个物品，系统不收");
         }
