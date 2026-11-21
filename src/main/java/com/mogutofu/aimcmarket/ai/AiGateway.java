@@ -48,6 +48,15 @@ public interface AiGateway {
         return null;
     }
 
+    /**
+     * 一次 AI 调用判断玩家想买/卖什么：返回
+     * {@code {action:"buy|sell|none", quantity, itemName, candidates:[ns:path], keywords:[...], priceCents}}。
+     * 失败返回 null。
+     */
+    default JsonObject parseTradeIntent(String playerName, String text, JsonObject context) {
+        return null;
+    }
+
     /** ping 一下，看接口是否可用（用于 /ex admin stats 显示链路状态）。 */
     boolean ping();
 

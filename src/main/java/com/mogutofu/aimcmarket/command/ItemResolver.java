@@ -360,6 +360,14 @@ public final class ItemResolver {
         return candidates.size() > 12 ? candidates.subList(0, 12) : candidates;
     }
 
+    /** 英文显示名（id → 英文名，AI 候选打分用）。 */
+    public static String englishName(String id) {
+        if (id == null) {
+            return "";
+        }
+        return englishNames().getOrDefault(id, "");
+    }
+
     private static volatile java.util.List<String> ALL_IDS;
     private static volatile java.util.Map<String, String> ENGLISH_NAMES;
 

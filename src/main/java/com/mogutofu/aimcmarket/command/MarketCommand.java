@@ -438,17 +438,43 @@ public final class MarketCommand {
         if (guess == null) {
             return null;
         }
-        // 1) AI 直接给了 candidates，验证是否真实存在
+        java.util.List<String> keywords = new java.util.ArrayList<>();
+        if (guess.has("keywords") && guess.get("keywords").isJsonArray()) {
+            for (var element : guess.getAsJsonArray("keywords")) {
+                try {
+                    keywords.add(element.getAsString().toLowerCase(java.util.Locale.ROOT));
+                } catch (RuntimeException ignored) {
+                    // 跳过坏数据
+                }
+            }
+        }
+        // 1) AI 直接给了 candidates：只保留真实注册的，并按关键词相似度选最像的
         if (guess.has("candidates") && guess.get("candidates").isJsonArray()) {
+            java.util.List<String> existing = new java.util.ArrayList<>();
             for (var element : guess.getAsJsonArray("candidates")) {
                 try {
                     String id = element.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
                     if (ItemResolver.byId(id) != null) {
-                        return id;
+                        existing.add(id);
                     }
                 } catch (RuntimeException ignored) {
                     // 单项格式不对跳过
                 }
+            }
+            if (existing.size() == 1) {
+                return existing.get(0);
+            }
+            if (!existing.isEmpty()) {
+                String best = existing.get(0);
+                int bestScore = -1;
+                for (String id : existing) {
+                    int score = keywordScore(id, keywords);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = id;
+                    }
+                }
+                return best;
             }
         }
         // 2) 用 keywords 去注册表里匹配
@@ -465,6 +491,25 @@ public final class MarketCommand {
             return candidates.get(0).id;
         }
         return null;
+    }
+
+    /** 物品 id / 英文名 与关键词的相似度打分。 */
+    private static int keywordScore(String id, java.util.List<String> keywords) {
+        String path = id.substring(id.indexOf(':') + 1);
+        String en = ItemResolver.englishName(id).toLowerCase(java.util.Locale.ROOT);
+        int score = 0;
+        for (String keyword : keywords) {
+            if (keyword.length() < 3) {
+                continue;
+            }
+            if (path.contains(keyword)) {
+                score += keyword.length() >= 6 ? 3 : 2;
+            }
+            if (en.contains(keyword)) {
+                score += 2;
+            }
+        }
+        return score;
     }
 
     private static java.util.List<ItemResolver.Candidate> candidateList(JsonObject guess) {
@@ -1080,23 +1125,18 @@ public final class MarketCommand {
         }
         AimcContext ctx = ctx();
         if (text == null || text.isBlank()) {
-            Messages.sendInfo(source, "说点具体的，例如：/ex 买 3 个铁锭，或者 /ex BLK 股票怎么样");
+            Messages.sendInfo(source, "说点具体的，例如：/ex 我要买 3 个铁锭，或者 /ex BLK 股票怎么样");
             return 0;
         }
         boolean aiReady = ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null;
-        // 1) 先走本地解析：确定的买卖/查询意图直接执行
-        JsonObject local = LocalParser.parse(text, ctx.market);
-        String localIntent = local == null ? "unknown" : local.get("intent").getAsString();
-        if (!forceAi && !"unknown".equals(localIntent)) {
-            executeParsed(source, account, local);
-            return Command.SINGLE_SUCCESS;
-        }
-        // 2) "我要买64个齿轮"：本地解析不认识的物品，也按 数量+物品 结构直接走上市/成交
-        if (!forceAi && tryLocalTradeText(source, account, text)) {
-            return Command.SINGLE_SUCCESS;
-        }
-        // 3) 问答类（"帮我看看XX股票"）直接问 AI，不先走严格 JSON 解析
         if (!aiReady) {
+            // AI 关闭时只用本地解析的明确意图；不做关键词猜测，避免猜错物品
+            JsonObject local = LocalParser.parse(text, ctx.market);
+            String localIntent = local == null || !local.has("intent") ? "unknown" : local.get("intent").getAsString();
+            if (!"unknown".equals(localIntent) && !forceAi) {
+                executeParsed(source, account, local);
+                return Command.SINGLE_SUCCESS;
+            }
             String answer = localQueryAnswer(account, text);
             if (answer != null) {
                 Messages.send(source, answer);
@@ -1111,28 +1151,97 @@ public final class MarketCommand {
             return 0;
         }
         account.lastAiAtMs = now;
-        String uuid = account.uuid;
-        Messages.sendInfo(source, "市场先生正在看你的请求…");
-        if (!forceAi && looksLikeQuery(text)) {
-            askChat(uuid, text);
-            return Command.SINGLE_SUCCESS;
-        }
-        // 3) 先试结构化解析（能直接下单/查询就执行），解析不出来再降级到问答
         String playerName = account.name;
-        ctx.aiSubmitter.submit("parse", () -> ctx.ai.parse(playerName, text, buildParseContext(account)),
-                data -> {
-                    JsonObject parsed = data == null ? null : AiJson.validateParse(data, ctx.market);
-                    if (parsed == null) {
-                        parsed = LocalParser.parse(text, ctx.market);
-                    }
-                    String intent = parsed == null || !parsed.has("intent") ? "unknown" : parsed.get("intent").getAsString();
-                    if ("unknown".equals(intent)) {
-                        askChat(uuid, text);
-                    } else {
-                        executeParsedForPlayer(uuid, parsed, text);
-                    }
-                });
+        Messages.sendInfo(source, "市场先生正在理解你的请求…");
+        JsonObject tradeContext = buildTradeContext(account);
+        ctx.aiSubmitter.submit("trade", () -> ctx.ai.parseTradeIntent(playerName, text, tradeContext),
+                data -> handleTradeAi(source, account, text, data));
         return Command.SINGLE_SUCCESS;
+    }
+
+    /** AI 返回买卖意图后的落地：认物品（必要时自动上市）→ 扣钱/给物品。 */
+    private static void handleTradeAi(CommandSourceStack source, Account account, String text, JsonObject data) {
+        AimcContext ctx = ctx();
+        if (ctx == null || account == null) {
+            return;
+        }
+        String action = data != null && data.has("action")
+                ? data.get("action").getAsString().trim().toLowerCase(java.util.Locale.ROOT) : "none";
+        boolean buying = "buy".equals(action);
+        boolean selling = "sell".equals(action);
+        if (!buying && !selling) {
+            // 不是买卖：当作问题交给只读问答
+            askChat(account.uuid, text);
+            return;
+        }
+        int quantity = 1;
+        if (data.has("quantity")) {
+            try {
+                quantity = Math.max(1, Math.min(576, data.get("quantity").getAsInt()));
+            } catch (RuntimeException ignored) {
+                quantity = 1;
+            }
+        }
+        String itemName = data.has("itemName") ? data.get("itemName").getAsString().trim() : "";
+        // 1) AI 给的候选 id（会验证是否真实注册）
+        String picked = pickItemId(data);
+        // 2) 名字能在目录里认出来
+        MarketStore.CatalogItem item = picked == null ? null : (ctx.market.hasItem(picked) ? ctx.market.item(picked) : null);
+        if (item == null && !itemName.isBlank()) {
+            item = ctx.market.resolve(itemName);
+        }
+        // 3) 目录没有这个物品：用 AI 给的价格自动上市（找不到价就用本地估价）
+        if (item == null && picked != null) {
+            ItemResolver.Found found = ItemResolver.byId(picked);
+            if (found != null) {
+                long cents = data.has("priceCents") ? data.get("priceCents").getAsLong() : -1L;
+                cents = cents > 0L ? Cents.clamp(cents, 100L, 2_000_000L) : heuristicPrice(found);
+                item = ctx.market.addItem(picked,
+                        itemName.isBlank() ? found.displayName() : itemName,
+                        new java.util.ArrayList<>(java.util.Collections.singletonList(
+                                found.nameEn == null ? "" : found.nameEn)),
+                        cents, 0.05, 12_000L);
+            }
+        }
+        if (item == null) {
+            Messages.sendFail(source, "市场先生没认出「" + (itemName.isBlank() ? text : itemName) + "」对应的物品。");
+            Messages.sendInfo(source, "换个说法再来一次，或用 /ex id 查看物品 id 后 /ex buy <id> 数量。");
+            return;
+        }
+        if (!itemName.isBlank()) {
+            ctx.market.addAlias(item.id, itemName);
+        }
+        performBuySell(source, account, item, quantity, buying);
+    }
+
+    /** 给买卖意图 AI 的上下文：模组命名空间 + 目录样例 + 玩家余额。 */
+    private static JsonObject buildTradeContext(Account account) {
+        AimcContext ctx = ctx();
+        JsonObject context = new JsonObject();
+        context.addProperty("balanceCents", account.balanceCents());
+        JsonArray namespaces = new JsonArray();
+        int nsCount = 0;
+        for (String namespace : ItemResolver.namespaces()) {
+            if (nsCount++ >= 80) {
+                break;
+            }
+            namespaces.add(namespace);
+        }
+        context.add("namespaces", namespaces);
+        JsonArray catalog = new JsonArray();
+        int count = 0;
+        for (MarketStore.CatalogItem item : ctx.market.items()) {
+            if (count++ >= 120) {
+                break;
+            }
+            JsonObject one = new JsonObject();
+            one.addProperty("id", item.id);
+            one.addProperty("name", item.nameZh);
+            one.addProperty("priceCents", ctx.market.price(item.id));
+            catalog.add(one);
+        }
+        context.add("catalog", catalog);
+        return context;
     }
 
     /** 主手/手上的/这个 之类的关键词：用玩家手上拿的物品。 */
@@ -1227,124 +1336,6 @@ public final class MarketCommand {
         }
         return Command.SINGLE_SUCCESS;
     }
-
-    /** 中文数字 1~99（"一""十五""六十四"）。 */
-    private static int chineseNumber(String text) {
-        String digits = "零一二三四五六七八九";
-        int value = 0;
-        int current = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
-            if (ch == '十') {
-                current = current == 0 ? 1 : current;
-                value += current * 10;
-                current = 0;
-            } else if (ch == '两') {
-                current = 2;
-            } else {
-                int d = digits.indexOf(ch);
-                if (d < 0) {
-                    throw new NumberFormatException("不是中文数字：" + text);
-                }
-                current = d;
-            }
-        }
-        return value + current;
-    }
-
-    /** 从"我要买64个齿轮"里抠出 买卖方向 / 数量 / 物品文本；抠不出返回 null。 */
-    private static String[] parseTradeText(String text) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        String t = text.trim();
-        boolean buying = t.contains("买") || t.contains("收") || t.contains("订购") || t.contains("来点");
-        boolean selling = t.contains("卖") || t.contains("出售") || t.contains("回收");
-        if (!buying && !selling) {
-            return null;
-        }
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("([0-9]+|[一二两三四五六七八九十]+)\\s*(?:个|件|组|块|张|根|份|只|把|台|颗|枚)?\\s*([^0-9，,。;；]+)")
-                .matcher(t);
-        if (!matcher.find()) {
-            return null;
-        }
-        String countText = matcher.group(1);
-        String itemText = matcher.group(2) == null ? "" : matcher.group(2).trim();
-        // 去掉残留的动词/语气词
-        for (String noise : new String[]{"我要", "我想", "帮我", "给我", "购买", "买", "卖", "出售", "收", "个", "的", "吧", "啊", "呗", "呢", "。", "，", "?"}) {
-            itemText = itemText.replace(noise, "");
-        }
-        itemText = itemText.trim();
-        if (itemText.isEmpty()) {
-            return null;
-        }
-        try {
-            int count = countText.matches("\\d+") ? Integer.parseInt(countText) : chineseNumber(countText);
-            if (count < 1 || count > 576) {
-                return null;
-            }
-            return new String[]{buying && !selling ? "buy" : "sell", String.valueOf(count), itemText};
-        } catch (NumberFormatException error) {
-            return null;
-        }
-    }
-
-    /** 处理"我要买64个齿轮"这类句式：目录没有的物品按需上市（AI 定价）后直接成交。 */
-    private static boolean tryLocalTradeText(CommandSourceStack source, Account account, String text) {
-        String[] parsed = parseTradeText(text);
-        if (parsed == null) {
-            return false;
-        }
-        boolean buying = "buy".equals(parsed[0]);
-        int count = Integer.parseInt(parsed[1]);
-        String itemText = parsed[2];
-        // "手上的/这个"：直接用玩家手里的物品
-        if (isHandKeyword(itemText)) {
-            String handId = handItemId(source.getPlayer());
-            if (handId == null) {
-                Messages.sendFail(source, "你主手没拿物品，先拿一个再试");
-                return true;
-            }
-            MarketStore.CatalogItem handItem = ctx().market.item(handId);
-            if (handItem != null) {
-                performBuySell(source, account, handItem, count, buying);
-            } else {
-                ensureCatalogItem(source, handId, created -> performBuySell(source, account, created, count, buying));
-            }
-            return true;
-        }
-        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
-        if (item != null) {
-            performBuySell(source, account, item, count, buying);
-            return true;
-        }
-        if (ItemResolver.resolve(itemText) != null) {
-            ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
-            return true;
-        }
-        // 服务端语言文件里没有这个名字：让 AI 推断 id（客户端汉化名也能查）
-        AimcContext ctx = ctx();
-        if (ctx != null && ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null) {
-            aiResolveItemAndCreate(source, itemText, created -> performBuySell(source, account, created, count, buying));
-            return true;
-        }
-        // AI 关闭时才退回手动方案
-        String handId = handItemId(source.getPlayer());
-        String handName = handItemName(source.getPlayer());
-        Messages.sendFail(source, "服务器认不出「" + itemText + "」这个名字（可能是客户端汉化名）。");
-        if (handId != null) {
-            Messages.sendInfo(source, "你现在主手拿着「" + handName + "」（" + handId + "），可以直接说：/ex "
-                    + (buying ? "买" : "卖") + "手上的 " + count);
-            Messages.sendInfo(source, "想以后用中文名：拿着它执行 /ex alias " + itemText);
-        } else {
-            Messages.sendInfo(source, "把要交易的物品拿在主手，再说：/ex " + (buying ? "买" : "卖") + "手上的 " + count
-                    + "；或者 /ex id 看物品 id，用 /ex " + (buying ? "buy" : "sell") + " <id> " + count);
-            Messages.sendInfo(source, "也可以拿着物品执行 /ex alias " + itemText + "，以后就能用这个名字买。");
-        }
-        return true;
-    }
-
 
     /** 像"问题"而不是"命令"的句子：直接走问答，省一次 JSON 解析，也更自然。 */
     private static boolean looksLikeQuery(String text) {
@@ -1618,11 +1609,21 @@ public final class MarketCommand {
                         sink.accept(ActionResult.fail(LocalParser.helpHint()));
                         return;
                     }
+                    ServerPlayer buyer = com.mogutofu.aimcmarket.AimcmarketMod.server() == null ? null
+                            : com.mogutofu.aimcmarket.AimcmarketMod.server().getPlayerList()
+                            .getPlayer(UUID.fromString(account.uuid));
                     for (var element : items) {
                         JsonObject one = element.getAsJsonObject();
                         String id = one.get("id").getAsString();
                         int count = one.has("count") ? one.get("count").getAsInt() : 1;
-                        sink.accept(TradeService.buy(ctx, account, id, count));
+                        ActionResult result = TradeService.buy(ctx, account, id, count);
+                        if (result.ok && buyer != null) {
+                            int left = giveItem(buyer, id, count);
+                            if (left > 0) {
+                                buyer.sendSystemMessage(Messages.info("背包放不下 " + left + " 个，已掉在脚下"));
+                            }
+                        }
+                        sink.accept(result);
                     }
                 }
                 case "sell" -> {

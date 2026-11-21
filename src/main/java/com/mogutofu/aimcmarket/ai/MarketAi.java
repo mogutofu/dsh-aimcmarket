@@ -322,6 +322,55 @@ public final class MarketAi implements AiGateway {
         }
     }
 
+    /**
+     * 一次 AI 调用识别买卖意图 + 物品 id + 估价，避免"关键词直接执行"猜错物品。
+     */
+    @Override
+    public JsonObject parseTradeIntent(String playerName, String text, JsonObject context) {
+        try {
+            if (offline() || "exchange".equals(mode())) {
+                return null;
+            }
+            String url = buildUrl(settings.aiLegacyPath);
+            if (url == null || !reserveBudget()) {
+                return null;
+            }
+            JsonObject request = new JsonObject();
+            request.addProperty("player", IDENTITY_PLAYER);
+            request.addProperty("uuid", IDENTITY_UUID);
+            request.addProperty("text", "你是 Minecraft 服务器 AIMCmarket 的市场先生。玩家在游戏里说：「" + text + "」\n"
+                    + "当前数据（JSON）：" + contextText(context) + "\n"
+                    + "请判断玩家意图：\n"
+                    + "1) 想买/卖物品：action 填 buy 或 sell，quantity 填数量（1-576，没说就 1），itemName 填玩家原话里的物品叫法；\n"
+                    + "   candidates 填最可能对应的物品注册 id（命名空间:路径，最多 5 个，必须来自上面 namespaces 里列出的命名空间）；\n"
+                    + "   keywords 填 3~8 个小写英文关键词（用于在服务器注册表里匹配）；\n"
+                    + "   priceCents 填该物品的合理单价（分，1 币=100 分，100~2000000）；如果目录里已有这个物品就填 0。\n"
+                    + "2) 其他问题：action 填 none，其余字段留空/0。\n"
+                    + "只输出一个 JSON 对象：{\"action\":\"buy|sell|none\",\"quantity\":1,\"itemName\":\"\","
+                    + "\"candidates\":[],\"keywords\":[],\"priceCents\":0}。不要解释、不要 markdown。");
+            long started = System.currentTimeMillis();
+            HttpResponse response = post(url, request.toString(), Math.max(timeoutMs(), 25_000));
+            long elapsed = System.currentTimeMillis() - started;
+            if (response.status != 200) {
+                return null;
+            }
+            JsonObject root = parseObject(response.body);
+            if (root == null || !JsonFile.bool(root, "ok", false)) {
+                return null;
+            }
+            JsonObject data = AiJson.parseLooseObject(JsonFile.str(root, "reply", ""));
+            if (data == null) {
+                Log.warn("[AI] 买卖意图回复不是 JSON");
+                return null;
+            }
+            Log.info("[AI] 买卖意图 " + text + " → " + data + " 用时=" + elapsed + "ms");
+            return data;
+        } catch (IOException | RuntimeException error) {
+            Log.warn("[AI] 买卖意图解析失败：" + describe(error));
+            return null;
+        }
+    }
+
     @Override
     public boolean ping() {
         try {
