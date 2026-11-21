@@ -1420,8 +1420,12 @@ public final class MarketCommand {
         }
         Account account = player(source);
         if (account == null) {
+            com.mogutofu.aimcmarket.util.Log.warn("[自然语言] 来源不是玩家（source=" + source.getTextName()
+                    + "），忽略：" + text);
+            Messages.sendFail(source, "这条命令只能游戏内用");
             return 0;
         }
+        com.mogutofu.aimcmarket.util.Log.info("[自然语言] 玩家=" + account.name + " 文本=" + text);
         AimcContext ctx = ctx();
         if (text == null || text.isBlank()) {
             Messages.sendInfo(source, "说点具体的，例如：/ex 我要买 3 个铁锭，或者 /ex BLK 股票怎么样");

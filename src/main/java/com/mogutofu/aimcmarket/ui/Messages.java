@@ -67,6 +67,8 @@ public final class Messages {
             player.sendSystemMessage(component);
             return;
         }
+        com.mogutofu.aimcmarket.util.Log.warn("[消息] 来源不是玩家，回退命令反馈（玩家看不到）："
+                + component.getString().replace('\n', ' '));
         source.sendSuccess(() -> component, false);
     }
 
