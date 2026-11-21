@@ -1464,6 +1464,7 @@ public final class MarketCommand {
                     if (!command.isEmpty() && isAllowedPlayerCommand(command)) {
                         Messages.sendInfo(source, "市场先生执行：" + command);
                         if (executePlayerCommand(source, command)) {
+                            Messages.sendOk(source, "执行完成（结果见上方输出）");
                             return;
                         }
                     }
@@ -1539,8 +1540,14 @@ public final class MarketCommand {
         if (cmd.startsWith("ex ")) {
             cmd = "/" + cmd;
         }
+        // 用玩家当前状态的"新"命令源执行，避免沿用外层命令已经结束的上下文（否则输出可能发不出去）
         try {
-            int result = source.getServer().getCommands().getDispatcher().execute(cmd, source);
+            CommandSourceStack execSource = source;
+            net.minecraft.server.level.ServerPlayer player = source.getPlayer();
+            if (player != null) {
+                execSource = player.createCommandSourceStack();
+            }
+            int result = source.getServer().getCommands().getDispatcher().execute(cmd, execSource);
             com.mogutofu.aimcmarket.util.Log.info("[代执行命令] " + cmd + " → result=" + result);
             return result > 0;
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException error) {
