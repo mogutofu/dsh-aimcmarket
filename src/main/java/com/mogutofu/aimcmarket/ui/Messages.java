@@ -81,6 +81,10 @@ public final class Messages {
         deliver(source, component);
     }
 
+    public static void sendOkay(CommandSourceStack source, String text) {
+        sendOk(source, text);
+    }
+
     public static void sendOk(CommandSourceStack source, String text) {
         deliver(source, ok(text));
     }

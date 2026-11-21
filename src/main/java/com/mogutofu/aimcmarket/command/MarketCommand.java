@@ -1467,8 +1467,10 @@ public final class MarketCommand {
                             ? data.get("command").getAsString().trim() : "";
                     if (!command.isEmpty() && isAllowedPlayerCommand(command)) {
                         Messages.sendInfo(source, "市场先生执行：" + command);
-                        if (executePlayerCommand(source, command)) {
-                            Messages.sendOk(source, "执行完成（结果见上方输出）");
+                        boolean done = tryExecuteActionDirect(source, account, command)
+                                || executePlayerCommand(source, command);
+                        if (done) {
+                            Messages.sendOkay(source, "执行完成（结果见上方输出）");
                             return;
                         }
                     }
@@ -1561,6 +1563,170 @@ public final class MarketCommand {
             Messages.sendFail(source, "命令执行失败：" + error.getMessage());
             return false;
         }
+    }
+
+    /** AI 规划出的"动作类"命令：直接在模组里执行（不走命令系统嵌套，保证结果消息能发到玩家）。 */
+    private static boolean tryExecuteActionDirect(CommandSourceStack source, Account account, String command) {
+        if (source == null || account == null || command == null) {
+            return false;
+        }
+        AimcContext ctx = ctx();
+        if (ctx == null) {
+            return false;
+        }
+        String body = command.trim();
+        if (body.startsWith("/ex ")) {
+            body = body.substring(4).trim();
+        } else if (body.startsWith("ex ")) {
+            body = body.substring(3).trim();
+        }
+        String[] parts = body.split("\\s+");
+        if (parts.length < 2) {
+            return false;
+        }
+        String root = parts[0].toLowerCase(java.util.Locale.ROOT);
+        com.mogutofu.aimcmarket.util.Log.info("[直执行] 玩家=" + account.name + " 命令=" + command);
+        if ("buy".equals(root) || "sell".equals(root)) {
+            int count = -1;
+            int itemEnd = parts.length;
+            String last = parts[parts.length - 1];
+            try {
+                count = Integer.parseInt(last);
+                itemEnd = parts.length - 1;
+            } catch (NumberFormatException ignored) {
+                count = -1;
+            }
+            StringBuilder itemText = new StringBuilder();
+            for (int i = 1; i < itemEnd; i++) {
+                if (itemText.length() > 0) {
+                    itemText.append(' ');
+                }
+                itemText.append(parts[i]);
+            }
+            String itemName = itemText.toString().trim();
+            if (itemName.isEmpty()) {
+                return false;
+            }
+            boolean buying = "buy".equals(root);
+            if (count <= 0) {
+                count = buying ? 1 : -1;
+            }
+            MarketStore.CatalogItem item = ctx.market.resolve(itemName);
+            if (item == null) {
+                if (ItemResolver.resolve(itemName) == null) {
+                    Messages.sendFail(source, "市场里没有这个物品：" + itemName);
+                    return true;
+                }
+                final int finalCount = count;
+                ensureCatalogItem(source, itemName, created -> performBuySell(source, account, created, finalCount, buying));
+                return true;
+            }
+            if (!buying && count <= 0) {
+                ServerPlayer player = source.getPlayer();
+                count = player == null ? 0 : countItem(player, item.id);
+                if (count <= 0) {
+                    Messages.sendFail(source, "背包里没有 " + item.nameZh);
+                    return true;
+                }
+            }
+            performBuySell(source, account, item, Math.max(1, count), buying);
+            return true;
+        }
+        if ("buyback".equals(root)) {
+            int count = 0;
+            int itemEnd = parts.length;
+            try {
+                count = Integer.parseInt(parts[parts.length - 1]);
+                itemEnd = parts.length - 1;
+            } catch (NumberFormatException ignored) {
+                count = 0;
+            }
+            StringBuilder itemText = new StringBuilder();
+            for (int i = 1; i < itemEnd; i++) {
+                if (itemText.length() > 0) {
+                    itemText.append(' ');
+                }
+                itemText.append(parts[i]);
+            }
+            String itemName = itemText.toString().trim();
+            if (itemName.isEmpty()) {
+                return false;
+            }
+            MarketStore.CatalogItem item = ctx.market.resolve(itemName);
+            if (item == null) {
+                if (ItemResolver.resolve(itemName) == null) {
+                    Messages.sendFail(source, "市场里没有这个物品：" + itemName);
+                    return true;
+                }
+                final int finalCount = count;
+                ensureCatalogItem(source, itemName, created -> acquireFromPlayer(source, account, created, finalCount));
+                return true;
+            }
+            acquireFromPlayer(source, account, item, count);
+            return true;
+        }
+        if ("return".equals(root)) {
+            int count = 0;
+            int itemEnd = parts.length;
+            try {
+                count = Integer.parseInt(parts[parts.length - 1]);
+                itemEnd = parts.length - 1;
+            } catch (NumberFormatException ignored) {
+                count = 0;
+            }
+            StringBuilder itemText = new StringBuilder();
+            for (int i = 1; i < itemEnd; i++) {
+                if (itemText.length() > 0) {
+                    itemText.append(' ');
+                }
+                itemText.append(parts[i]);
+            }
+            String itemName = itemText.toString().trim();
+            if (itemName.isEmpty()) {
+                return false;
+            }
+            MarketStore.CatalogItem item = ctx.market.resolve(itemName);
+            if (item == null) {
+                Messages.sendFail(source, "没买过/目录里没有：" + itemName);
+                return true;
+            }
+            returnItem(source, account, item, count);
+            return true;
+        }
+        if ("stock".equals(root) && parts.length >= 4) {
+            String action = parts[1].toLowerCase(java.util.Locale.ROOT);
+            if (!"buy".equals(action) && !"sell".equals(action)) {
+                return false;
+            }
+            StringBuilder nameText = new StringBuilder();
+            for (int i = 2; i < parts.length - 1; i++) {
+                if (nameText.length() > 0) {
+                    nameText.append(' ');
+                }
+                nameText.append(parts[i]);
+            }
+            long shares;
+            try {
+                shares = Long.parseLong(parts[parts.length - 1]);
+            } catch (NumberFormatException error) {
+                return false;
+            }
+            if (shares < 1L) {
+                Messages.sendFail(source, "股数至少是 1");
+                return true;
+            }
+            StockStore.Stock stock = resolveStockByText(nameText.toString().trim());
+            if (stock == null) {
+                Messages.sendFail(source, "没找到这只股票：" + nameText);
+                return true;
+            }
+            send(source, "buy".equals(action)
+                    ? FinanceService.buyStock(ctx, account, stock.code, shares)
+                    : FinanceService.sellStock(ctx, account, stock.code, shares));
+            tickGovernment(source);
+            return true;
+        }
+        return false;
     }
 
     /** 直接生成并发送常见查询结果（基金/持仓/流水/余额/银行/公司/政策/新闻/行情/期货/期权）。 */
