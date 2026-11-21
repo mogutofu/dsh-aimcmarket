@@ -40,6 +40,14 @@ public interface AiGateway {
         return -1L;
     }
 
+    /**
+     * 推断中文物品名对应的注册 id：返回 {keywords:[英文关键词], candidates:[ns:path]}。
+     * 拿不到返回 null（调用方给玩家替代方案）。
+     */
+    default JsonObject resolveItemId(String zhName, JsonObject context) {
+        return null;
+    }
+
     /** ping 一下，看接口是否可用（用于 /ex admin stats 显示链路状态）。 */
     boolean ping();
 

@@ -349,6 +349,139 @@ public final class MarketCommand {
         return Command.SINGLE_SUCCESS;
     }
 
+    /** AI 推断中文名对应的物品 id：推断 → 认商品 → 估价上市 → 执行动作。 */
+    private static void aiResolveItemAndCreate(CommandSourceStack source, String zhName,
+                                               java.util.function.Consumer<MarketStore.CatalogItem> action) {
+        AimcContext ctx = ctx();
+        if (ctx == null) {
+            return;
+        }
+        Messages.sendInfo(source, "市场先生正在查「" + zhName + "」对应的物品 id…");
+        JsonObject idContext = new JsonObject();
+        JsonArray namespaces = new JsonArray();
+        int count = 0;
+        for (String namespace : ItemResolver.namespaces()) {
+            if (count++ >= 80) {
+                break;
+            }
+            namespaces.add(namespace);
+        }
+        idContext.add("namespaces", namespaces);
+        idContext.addProperty("catalogItems", ctx.market.items().size());
+        ctx.aiSubmitter.submit("itemid", () -> ctx.ai.resolveItemId(zhName, idContext), guess -> {
+            AimcContext current = ctx();
+            if (current == null) {
+                return;
+            }
+            String picked = pickItemId(guess);
+            if (picked == null) {
+                Messages.sendFail(source, "AI 也推断不出「" + zhName + "」对应的物品。");
+                Messages.sendInfo(source, "这通常说明这个物品只存在于客户端（服务端没装对应模组），服务端无法交易它。"
+                        + "如果它确实在服务器里，把物品拿在主手用 /ex 买手上的 1，或 /ex id 看 id。");
+                java.util.List<ItemResolver.Candidate> candidates = candidateList(guess);
+                if (!candidates.isEmpty()) {
+                    StringBuilder line = new StringBuilder("AI 猜测的候选：");
+                    int shown = 0;
+                    for (ItemResolver.Candidate candidate : candidates) {
+                        if (shown++ >= 4) {
+                            break;
+                        }
+                        line.append(candidate.id);
+                        if (candidate.nameEn != null && !candidate.nameEn.isBlank()) {
+                            line.append("（").append(candidate.nameEn).append("）");
+                        }
+                        line.append("；");
+                    }
+                    line.append("可用 /ex buy <id> 1 试买");
+                    Messages.sendInfo(source, line.toString());
+                }
+                return;
+            }
+            ItemResolver.Found found = ItemResolver.byId(picked);
+            if (found == null) {
+                Messages.sendFail(source, "AI 猜的物品 id 不存在：" + picked);
+                return;
+            }
+            Messages.sendInfo(source, "认出是「" + found.displayName() + "」（" + found.id + "），正在定价…");
+            JsonObject priceContext = buildPriceContext(found);
+            String finalId = found.id;
+            current.aiSubmitter.submit("price",
+                    () -> {
+                        long cents = current.ai.estimatePriceCents(finalId, found.displayName(), priceContext);
+                        JsonObject wrapper = new JsonObject();
+                        wrapper.addProperty("priceCents", cents);
+                        return wrapper;
+                    },
+                    data -> {
+                        long cents = data != null && data.has("priceCents") ? data.get("priceCents").getAsLong() : -1L;
+                        if (cents <= 0L) {
+                            cents = heuristicPrice(found);
+                        }
+                        AimcContext latest = ctx();
+                        if (latest == null) {
+                            return;
+                        }
+                        MarketStore.CatalogItem item = latest.market.hasItem(finalId)
+                                ? latest.market.item(finalId)
+                                : latest.market.addItem(finalId, zhName,
+                                new java.util.ArrayList<>(java.util.Collections.singletonList(
+                                        found.nameEn == null ? "" : found.nameEn)),
+                                cents, 0.05, 12_000L);
+                        latest.market.addAlias(finalId, zhName);
+                        action.accept(item);
+                    });
+        });
+    }
+
+    /** 从 AI 推断结果里挑一个能验证存在的 id；太模糊就返回 null。 */
+    private static String pickItemId(JsonObject guess) {
+        if (guess == null) {
+            return null;
+        }
+        // 1) AI 直接给了 candidates，验证是否真实存在
+        if (guess.has("candidates") && guess.get("candidates").isJsonArray()) {
+            for (var element : guess.getAsJsonArray("candidates")) {
+                try {
+                    String id = element.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
+                    if (ItemResolver.byId(id) != null) {
+                        return id;
+                    }
+                } catch (RuntimeException ignored) {
+                    // 单项格式不对跳过
+                }
+            }
+        }
+        // 2) 用 keywords 去注册表里匹配
+        java.util.List<ItemResolver.Candidate> candidates = candidateList(guess);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        if (candidates.size() == 1) {
+            return candidates.get(0).id;
+        }
+        int top = candidates.get(0).score;
+        int second = candidates.get(1).score;
+        if (top >= 4 && (top >= second * 2 || top >= 8)) {
+            return candidates.get(0).id;
+        }
+        return null;
+    }
+
+    private static java.util.List<ItemResolver.Candidate> candidateList(JsonObject guess) {
+        if (guess == null || !guess.has("keywords") || !guess.get("keywords").isJsonArray()) {
+            return java.util.List.of();
+        }
+        java.util.List<String> tokens = new java.util.ArrayList<>();
+        for (var element : guess.getAsJsonArray("keywords")) {
+            try {
+                tokens.add(element.getAsString());
+            } catch (RuntimeException ignored) {
+                // 跳过坏数据
+            }
+        }
+        return ItemResolver.searchByTokens(tokens);
+    }
+
     /** 真正执行买/卖（目录里有没有都走这里）。 */
     private static void performBuySell(CommandSourceStack source, Account account, MarketStore.CatalogItem item,
                                        int count, boolean buying) {
@@ -439,6 +572,11 @@ public final class MarketCommand {
         }
         ItemResolver.Found found = ItemResolver.resolve(itemText);
         if (found == null) {
+            // 服务端认不出这个名字：让 AI 推断它对应哪个已注册物品 id（客户端汉化名也能救）
+            if (ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null) {
+                aiResolveItemAndCreate(source, itemText, action);
+                return;
+            }
             Messages.sendFail(source, "市场里找不到这个物品：" + itemText);
             Messages.sendInfo(source, "如果是模组物品，把物品拿在主手说 /ex 买手上的 1；"
                     + "或用 /ex id 查物品 id，再 /ex buy <id> 1。");
@@ -1185,7 +1323,13 @@ public final class MarketCommand {
             ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
             return true;
         }
-        // 认不出中文名（可能是客户端汉化）：给出可执行的替代方案，别让玩家以为只能干等 AI
+        // 服务端语言文件里没有这个名字：让 AI 推断 id（客户端汉化名也能查）
+        AimcContext ctx = ctx();
+        if (ctx != null && ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null) {
+            aiResolveItemAndCreate(source, itemText, created -> performBuySell(source, account, created, count, buying));
+            return true;
+        }
+        // AI 关闭时才退回手动方案
         String handId = handItemId(source.getPlayer());
         String handName = handItemName(source.getPlayer());
         Messages.sendFail(source, "服务器认不出「" + itemText + "」这个名字（可能是客户端汉化名）。");

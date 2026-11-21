@@ -262,4 +262,124 @@ public final class ItemResolver {
             return 0;
         }
     }
+
+    /** 按 id 查（给 AI 推断结果用）。 */
+    public static Found byId(String id) {
+        return id == null || id.isBlank() ? null : fromId(id.trim());
+    }
+
+    /** 全部已注册物品 id（惰性缓存，给 AI 关键词匹配用）。 */
+    public static java.util.List<String> allIds() {
+        java.util.List<String> cached = ALL_IDS;
+        if (cached != null) {
+            return cached;
+        }
+        java.util.List<String> list = new java.util.ArrayList<>();
+        for (ResourceLocation location : BuiltInRegistries.ITEM.keySet()) {
+            list.add(location.toString());
+        }
+        ALL_IDS = list;
+        return list;
+    }
+
+    /** 服务器里有哪些模组命名空间（给 AI 推断"是哪个模组"用），按物品数降序。 */
+    public static java.util.List<String> namespaces() {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        for (String id : allIds()) {
+            int colon = id.indexOf(':');
+            String ns = colon > 0 ? id.substring(0, colon) : "minecraft";
+            counts.merge(ns, 1, Integer::sum);
+        }
+        java.util.List<java.util.Map.Entry<String, Integer>> entries = new java.util.ArrayList<>(counts.entrySet());
+        entries.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (var entry : entries) {
+            result.add(entry.getKey() + "(" + entry.getValue() + ")");
+        }
+        return result;
+    }
+
+    /** 关键词候选（AI 推断物品 id 用）。 */
+    public static final class Candidate {
+        public final String id;
+        public final String nameEn;
+        public final int score;
+
+        Candidate(String id, String nameEn, int score) {
+            this.id = id;
+            this.nameEn = nameEn;
+            this.score = score;
+        }
+    }
+
+    /** 按英文关键词在已注册物品 id / 英文显示名里打分找候选，返回最高分的若干条。 */
+    public static java.util.List<Candidate> searchByTokens(java.util.List<String> tokens) {
+        java.util.List<String> keywords = new java.util.ArrayList<>();
+        if (tokens != null) {
+            for (String token : tokens) {
+                if (token == null) {
+                    continue;
+                }
+                String value = token.trim().toLowerCase(Locale.ROOT);
+                if (value.length() < 3) {
+                    continue;
+                }
+                for (String part : value.split("[_\\-\\s]+")) {
+                    if (part.length() >= 3 && !keywords.contains(part)) {
+                        keywords.add(part);
+                    }
+                }
+                if (!keywords.contains(value)) {
+                    keywords.add(value);
+                }
+            }
+        }
+        if (keywords.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.Map<String, String> enNames = englishNames();
+        java.util.List<Candidate> candidates = new java.util.ArrayList<>();
+        for (String id : allIds()) {
+            String idLower = id.toLowerCase(Locale.ROOT);
+            String en = enNames.getOrDefault(id, "").toLowerCase(Locale.ROOT);
+            String path = idLower.substring(idLower.indexOf(':') + 1);
+            int score = 0;
+            for (String keyword : keywords) {
+                if (path.contains(keyword)) {
+                    score += keyword.length() >= 6 ? 3 : 2;
+                }
+                if (en.contains(keyword)) {
+                    score += 2;
+                }
+            }
+            if (score > 0) {
+                candidates.add(new Candidate(id, enNames.getOrDefault(id, ""), score));
+            }
+        }
+        candidates.sort((a, b) -> Integer.compare(b.score, a.score));
+        return candidates.size() > 12 ? candidates.subList(0, 12) : candidates;
+    }
+
+    private static volatile java.util.List<String> ALL_IDS;
+    private static volatile java.util.Map<String, String> ENGLISH_NAMES;
+
+    /** id → 英文显示名（惰性缓存）。 */
+    private static java.util.Map<String, String> englishNames() {
+        java.util.Map<String, String> cached = ENGLISH_NAMES;
+        if (cached != null) {
+            return cached;
+        }
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        for (java.util.Map.Entry<net.minecraft.resources.ResourceKey<Item>, Item> entry
+                : BuiltInRegistries.ITEM.entrySet()) {
+            try {
+                map.put(entry.getKey().location().toString(),
+                        new ItemStack(entry.getValue()).getHoverName().getString());
+            } catch (Exception ignored) {
+                // 单个物品取名失败跳过
+            }
+        }
+        ENGLISH_NAMES = map;
+        return map;
+    }
 }

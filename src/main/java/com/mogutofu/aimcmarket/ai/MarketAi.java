@@ -274,6 +274,54 @@ public final class MarketAi implements AiGateway {
         }
     }
 
+    /**
+     * 让 AI 推断"这个中文名对应哪个已注册物品 id"：返回 {keywords:[英文关键词], candidates:[ns:path]}。
+     *
+     * <p>服务端没有客户端汉化名时用这个兜底：AI 给英文关键词，模组再拿关键词去注册表里匹配。
+     * AI 不可用返回 null。</p>
+     */
+    @Override
+    public JsonObject resolveItemId(String zhName, JsonObject context) {
+        try {
+            if (offline() || "exchange".equals(mode())) {
+                return null;
+            }
+            String url = buildUrl(settings.aiLegacyPath);
+            if (url == null || !reserveBudget()) {
+                return null;
+            }
+            JsonObject request = new JsonObject();
+            request.addProperty("player", IDENTITY_PLAYER);
+            request.addProperty("uuid", IDENTITY_UUID);
+            request.addProperty("text", "你是 Minecraft 模组物品识别助手。玩家看到的物品中文名是「" + zhName
+                    + "」，但服务器语言文件里没有这个中文名（可能是客户端汉化或资源包翻译）。\n"
+                    + "服务器里已注册的物品 id 只能来自这些模组命名空间：" + contextText(context) + "\n"
+                    + "请推断它最可能的物品注册 id 和英文关键词。只输出一个 JSON 对象："
+                    + "{\"keywords\":[\"小写英文关键词，3~8 个\"],\"candidates\":[\"命名空间:物品路径，最多 5 个\"]}。"
+                    + "不要解释、不要 markdown。如果完全无法判断，keywords 和 candidates 都输出空数组。");
+            long started = System.currentTimeMillis();
+            HttpResponse response = post(url, request.toString(), Math.max(timeoutMs(), 25_000));
+            long elapsed = System.currentTimeMillis() - started;
+            if (response.status != 200) {
+                return null;
+            }
+            JsonObject root = parseObject(response.body);
+            if (root == null || !JsonFile.bool(root, "ok", false)) {
+                return null;
+            }
+            JsonObject data = AiJson.parseLooseObject(JsonFile.str(root, "reply", ""));
+            if (data == null) {
+                Log.warn("[AI] 物品 id 推断回复不是 JSON");
+                return null;
+            }
+            Log.info("[AI] 物品 id 推断 " + zhName + " → " + data + " 用时=" + elapsed + "ms");
+            return data;
+        } catch (IOException | RuntimeException error) {
+            Log.warn("[AI] 物品 id 推断失败：" + describe(error));
+            return null;
+        }
+    }
+
     @Override
     public boolean ping() {
         try {
