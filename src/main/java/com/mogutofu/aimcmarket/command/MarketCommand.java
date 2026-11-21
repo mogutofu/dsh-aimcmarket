@@ -435,6 +435,23 @@ public final class MarketCommand {
         });
     }
 
+    /** 从玩家原话里抠出形如 ns:path 的物品 id，并且必须是真实注册的。 */
+    private static String findIdToken(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("([a-z0-9_.-]+:[a-z0-9_./-]+)", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(text);
+        while (matcher.find()) {
+            String id = matcher.group(1).trim().toLowerCase(java.util.Locale.ROOT);
+            if (id.length() >= 3 && ItemResolver.byId(id) != null) {
+                return id;
+            }
+        }
+        return null;
+    }
+
     /** 从 AI 推断结果里挑一个能验证存在的 id；太模糊就返回 null。 */
     private static String pickItemId(JsonObject guess) {
         if (guess == null) {
@@ -1323,12 +1340,20 @@ public final class MarketCommand {
             }
         }
         String itemName = data.has("itemName") ? data.get("itemName").getAsString().trim() : "";
-        // 1) AI 给的候选 id（会验证是否真实注册）
-        String picked = pickItemId(data);
-        // 2) 名字能在目录里认出来
-        MarketStore.CatalogItem item = picked == null ? null : (ctx.market.hasItem(picked) ? ctx.market.item(picked) : null);
-        if (item == null && !itemName.isBlank()) {
+        // 0) 玩家原话里直接写了物品 id：以 id 为准（避免"火箭燃料罐"被 AI 认成别的物品）
+        String explicitId = findIdToken(text);
+        // 1) 已学习的中文名/别名优先（市场目录里绑定过的名字比 AI 猜的更可信）
+        MarketStore.CatalogItem item = null;
+        if (explicitId == null && !itemName.isBlank()) {
             item = ctx.market.resolve(itemName);
+        }
+        // 2) 名字认不出来再用 AI 候选 id
+        String picked = explicitId != null ? explicitId : pickItemId(data);
+        if (item == null && explicitId != null) {
+            item = ctx.market.hasItem(explicitId) ? ctx.market.item(explicitId) : null;
+        }
+        if (item == null && picked != null) {
+            item = ctx.market.hasItem(picked) ? ctx.market.item(picked) : null;
         }
         // 3) 目录没有这个物品：用 AI 给的价格自动上市（找不到价就用本地估价）
         if (item == null && picked != null) {
@@ -1439,20 +1464,39 @@ public final class MarketCommand {
             Messages.sendFail(source, "这条命令只能游戏内用");
             return 0;
         }
-        String name = text(context, "name");
+        String raw = text(context, "name");
+        if (raw.isBlank()) {
+            Messages.sendFail(source, "用法：/ex alias <名字> [物品id]；不写 id 就用主手物品");
+            return 0;
+        }
+        // "/ex alias 火箭燃料罐 kubejs:fuel_tank"：直接按 id 重绑
+        String name = raw;
+        String targetId = null;
+        String[] parts = raw.split("\s+");
+        if (parts.length >= 2) {
+            String candidate = parts[parts.length - 1].toLowerCase(java.util.Locale.ROOT);
+            if (candidate.contains(":") && ItemResolver.byId(candidate) != null) {
+                targetId = candidate;
+                name = raw.substring(0, raw.length() - candidate.length()).trim();
+            }
+        }
         if (name.isBlank()) {
-            Messages.sendFail(source, "用法：主手拿着物品，输入 /ex alias <你习惯的叫法>");
+            Messages.sendFail(source, "名字不能为空，例：/ex alias 火箭燃料罐 kubejs:fuel_tank");
             return 0;
         }
-        String id = handItemId(player);
-        if (id == null) {
-            Messages.sendFail(source, "把要绑定的物品拿在主手，再输入 /ex alias " + name);
+        if (targetId == null) {
+            targetId = handItemId(player);
+        }
+        if (targetId == null) {
+            Messages.sendFail(source, "把要绑定的物品拿在主手，或写物品 id：/ex alias " + name + " <物品id>");
             return 0;
         }
-        ensureCatalogItem(source, id, item -> {
-            ctx().market.addAlias(item.id, name);
-            Messages.sendOk(source, "记住了：「" + name + "」= " + item.nameZh + "（" + item.id
-                    + "）。以后直接 /ex 买 " + name + " 数量");
+        String finalId = targetId;
+        String finalName = name;
+        ensureCatalogItem(source, finalId, item -> {
+            ctx().market.rebindAlias(item.id, finalName);
+            Messages.sendOk(source, "记住了：「" + finalName + "」= " + item.nameZh + "（" + item.id
+                    + "）。以后直接 /ex 买 " + finalName + " 数量");
         });
         return Command.SINGLE_SUCCESS;
     }

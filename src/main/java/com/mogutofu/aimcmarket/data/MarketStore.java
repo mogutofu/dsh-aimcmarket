@@ -295,6 +295,35 @@ public final class MarketStore {
         return item;
     }
 
+    /** 从所有商品上摘掉这个别名（修复绑错物品用），返回改动条数。 */
+    public int removeAliasEverywhere(String alias) {
+        if (alias == null || alias.isBlank()) {
+            return 0;
+        }
+        String value = alias.trim().toLowerCase(Locale.ROOT);
+        int changed = 0;
+        for (CatalogItem item : new ArrayList<>(catalog.values())) {
+            if (!item.aliases.contains(value)) {
+                continue;
+            }
+            List<String> aliases = new ArrayList<>(item.aliases);
+            aliases.remove(value);
+            catalog.put(item.id, new CatalogItem(item.id, item.nameZh, aliases, item.basePriceCents,
+                    item.volatility, item.liquidity, item.enabled));
+            changed++;
+        }
+        if (changed > 0) {
+            persistCatalog();
+        }
+        return changed;
+    }
+
+    /** 把别名重新绑定到指定商品（先从其它商品上摘掉，避免"一个名字两个物品"）。 */
+    public CatalogItem rebindAlias(String id, String alias) {
+        removeAliasEverywhere(alias);
+        return addAlias(id, alias);
+    }
+
     /** 给已有商品追加一个别名（玩家用 /ex alias 把自己客户端看到的名字绑上来）。 */
     public CatalogItem addAlias(String id, String alias) {
         if (id == null || alias == null || alias.isBlank()) {

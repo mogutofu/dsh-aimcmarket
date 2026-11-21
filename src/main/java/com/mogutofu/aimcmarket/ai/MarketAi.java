@@ -344,6 +344,7 @@ public final class MarketAi implements AiGateway {
                     + "1) 想买物品：action=buy；想卖/收购（把背包里的东西卖给市场）：action=sell；想退货（退掉之前在本市场买的）：action=return。\n"
                     + "   quantity = 数量（buy 没说就 1；sell/return 没说就填 0 表示背包里全部），itemName = 玩家原话里的物品叫法；\n"
                     + "   candidates 填最可能对应的物品注册 id（命名空间:路径，最多 5 个，必须来自上面 namespaces 里列出的命名空间）；\n"
+                    + "   如果玩家消息里直接写了形如 命名空间:路径 的物品 id，把该 id 放在 candidates 第一位，优先用它。\n"
                     + "   keywords 填 3~8 个小写英文关键词（用于在服务器注册表里匹配）；\n"
                     + "   priceCents 填该物品的合理单价（分，1 币=100 分，100~2000000）；如果目录里已有这个物品就填 0。\n"
                     + "2) 其他问题：action 填 none，其余字段留空/0。\n"
