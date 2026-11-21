@@ -53,8 +53,11 @@ public final class AimcmarketMod {
     public AimcmarketMod() {
         Log.setSinks(LOGGER::info, LOGGER::warn);
         MarketConfig.register();
-        MinecraftForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        // LOWEST：让别的模组（例如某些把 /expand 别名注册成 /ex 的）先注册，我们再覆盖根命令，
+        // 保证 /ex 是我们的市场命令（/ex help、/exchange、/market 都可用）。
+        MinecraftForge.EVENT_BUS.addListener(net.minecraftforge.eventbus.api.EventPriority.LOWEST, this::onRegisterCommands);
         MinecraftForge.EVENT_BUS.addListener(this::onServerStarting);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStarted);
         MinecraftForge.EVENT_BUS.addListener(this::onServerStopping);
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(this::onPlayerLogin);
@@ -183,6 +186,24 @@ public final class AimcmarketMod {
         MarketCommand.register(event.getDispatcher());
         AdminCommand.register(event.getDispatcher());
         LOGGER.info("AIMCmarket 命令已注册：/ex、/exchange、/market");
+    }
+
+    /**
+     * 服务器启动后再注册一遍命令树。
+     *
+     * <p>有些模组（WorldEdit 系）会把自己的命令别名塞进 /ex，而 Brigadier 后注册的会覆盖先注册的。
+     * 这里在 ServerStarted 时再注册一次，确保 /ex 根命令一定是 AIMCmarket 的；
+     * 失败也不影响服务器（只记一条 warn）。</p>
+     */
+    private void onServerStarted(net.minecraftforge.event.server.ServerStartedEvent event) {
+        try {
+            var dispatcher = event.getServer().getCommands().getDispatcher();
+            MarketCommand.register(dispatcher);
+            AdminCommand.register(dispatcher);
+            LOGGER.info("AIMCmarket 命令已在服务器启动后刷新（/ex 根命令归市场）");
+        } catch (RuntimeException error) {
+            LOGGER.warn("AIMCmarket 启动后刷新命令失败（不影响正常使用）：{}", error.getMessage());
+        }
     }
 
     private void onServerTick(TickEvent.ServerTickEvent event) {
