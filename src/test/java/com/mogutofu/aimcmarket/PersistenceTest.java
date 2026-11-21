@@ -124,6 +124,48 @@ class PersistenceTest {
     }
 
     @Test
+    void purchaseRecordsSupportReturnAndPersistence() {
+        AimcContext ctx = load();
+        Account account = ctx.accounts.getOrCreate(TEST_UUID, "Tester", NOW_MS,
+                ctx.settings.startingBalanceCents, true);
+        ctx.market.addItem("kubejs:test_bomb", "测试音爆弹", java.util.List.of("test bomb"),
+                9_000L, 0.05, 12_000L);
+        ctx.purchases.record(account.uuid, "kubejs:test_bomb", 3, 9_000L, NOW_MS);
+        assertEquals(3, ctx.purchases.returnable(account.uuid, "kubejs:test_bomb", NOW_MS + 1_000L),
+                "7 天内应可退 3 个");
+        ctx.saveAll();
+
+        AimcContext reloaded = AimcContext.load(tempDir, tempDir.resolve("config"),
+                MarketSettings.defaults(), NOW_MS + 5_000L, 7L);
+        assertEquals(3, reloaded.purchases.returnable(account.uuid, "kubejs:test_bomb", NOW_MS + 5_000L),
+                "重启后买入记录应还在");
+        long refund = reloaded.purchases.refund(account.uuid, "kubejs:test_bomb", 2, NOW_MS + 5_000L);
+        assertEquals(18_000L, refund, "退 2 个应按原价 90 币/个 退 180 币");
+        assertEquals(1, reloaded.purchases.returnable(account.uuid, "kubejs:test_bomb", NOW_MS + 5_000L),
+                "退完 2 个后还剩 1 个可退");
+        assertEquals(0, reloaded.purchases.returnable(account.uuid, "kubejs:test_bomb",
+                        NOW_MS + com.mogutofu.aimcmarket.data.PurchaseStore.RETURN_WINDOW_MS + 10_000L),
+                "超过 7 天不能再退");
+    }
+
+    @Test
+    void buybackAtCustomPriceAddsMoneyAndKeepsLedgerBalanced() {
+        AimcContext ctx = load();
+        Account account = ctx.accounts.getOrCreate(TEST_UUID, "Tester", NOW_MS,
+                ctx.settings.startingBalanceCents, true);
+        ctx.market.addItem("kubejs:test_bomb", "测试音爆弹", java.util.List.of("test bomb"),
+                9_000L, 0.05, 12_000L);
+        long before = account.balanceCents();
+        long unit = 12_340L;
+        com.mogutofu.aimcmarket.engine.ActionResult result =
+                com.mogutofu.aimcmarket.engine.TradeService.sellWithPrice(ctx, account,
+                        "kubejs:test_bomb", 2, unit, "收购", "trade.buyback");
+        assertTrue(result.ok, "按指定单价收购应该成功：" + result.message);
+        assertEquals(before + unit * 2, account.balanceCents(), "收购款应按指定单价入账");
+        assertTrue(ctx.ledger.isBalanced(), "收购后账本应平衡");
+    }
+
+    @Test
     void corruptAccountsFileLoadsAsEmptyInsteadOfCrashing() throws Exception {
         Path dataDir = tempDir.resolve("world").resolve("aimcmarket");
         Files.createDirectories(dataDir);

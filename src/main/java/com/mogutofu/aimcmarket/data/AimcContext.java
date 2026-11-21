@@ -35,6 +35,8 @@ public final class AimcContext {
     public final OptionsStore options;
     public final GovernmentStore government;
     public final NewsStore news;
+    /** 玩家买入记录（退货用）。 */
+    public final PurchaseStore purchases;
 
     /** AI 网关（模组启动后注入；单测可以注入假实现或 null）。 */
     public AiGateway ai;
@@ -91,6 +93,7 @@ public final class AimcContext {
         this.options = new OptionsStore(dataDir.resolve("options.json"));
         this.government = new GovernmentStore(dataDir.resolve("government.json"), ledger);
         this.news = new NewsStore(dataDir.resolve("news.json"));
+        this.purchases = new PurchaseStore(dataDir.resolve("purchases.json"));
     }
 
     /**
@@ -130,6 +133,7 @@ public final class AimcContext {
         context.futures.load();
         context.options.load();
         context.news.load();
+        context.purchases.load();
 
         context.ledger.reanchorIssued();
         Log.info("AIMCmarket 数据加载完成：货币总量 " + com.mogutofu.aimcmarket.util.Cents.format(context.ledger.circulationCents())
@@ -150,6 +154,7 @@ public final class AimcContext {
         options.save();
         government.save();
         news.save();
+        purchases.save();
         lastSavedAtMs = System.currentTimeMillis();
         Log.info("数据已落盘（" + (lastSavedAtMs - start) + "ms）");
     }

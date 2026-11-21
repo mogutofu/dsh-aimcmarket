@@ -237,7 +237,7 @@ public final class TradeService {
         }
         ActionResult result;
         try {
-            result = doSell(ctx, account, itemId, count);
+            result = doSell(ctx, account, itemId, count, -1L, "trade.sell", "卖出");
         } catch (RuntimeException error) {
             Log.warn("卖出异常（" + itemId + " ×" + count + "）", error);
             result = ActionResult.fail("交易失败：内部错误，物品不会被扣");
@@ -248,7 +248,20 @@ public final class TradeService {
         return result;
     }
 
-    private static ActionResult doSell(AimcContext ctx, Account account, String itemId, int count) {
+    /**
+     * 按指定单价收购/退货：unitOverride > 0 时不用回收价（60%）。
+     *
+     * <p>命令层负责先扣背包物品；本方法只负责账本、冲击、成交额和回执。</p>
+     */
+    public static ActionResult sellWithPrice(AimcContext ctx, Account account, String itemId, int count,
+                                             long unitCents, String actionLabel, String ledgerKind) {
+        return doSell(ctx, account, itemId, count, Math.max(1L, unitCents),
+                ledgerKind == null || ledgerKind.isBlank() ? "trade.buyback" : ledgerKind,
+                actionLabel == null || actionLabel.isBlank() ? "收购" : actionLabel);
+    }
+
+    private static ActionResult doSell(AimcContext ctx, Account account, String itemId, int count,
+                                      long unitOverride, String ledgerKind, String actionLabel) {
         if (ctx == null || ctx.market == null || account == null) {
             return ActionResult.fail("账户或市场数据不存在，交易取消");
         }
@@ -282,7 +295,7 @@ public final class TradeService {
         if (waitMs > 0L) {
             return ActionResult.fail("手速太快了，" + secondsOf(waitMs) + " 秒后再卖");
         }
-        long unit = effectiveBidCents(ctx, item.id);
+        long unit = unitOverride > 0L ? unitOverride : effectiveBidCents(ctx, item.id);
         long total;
         try {
             total = Math.multiplyExact(unit, (long) count);
@@ -293,8 +306,8 @@ public final class TradeService {
             return ActionResult.fail("这个物品现在的回收价是 0，先别卖");
         }
         // 回收金是系统增发（不是别人口袋里的钱），所以用 issue。
-        ctx.ledger.issue(account, total, "trade.sell", account.name,
-                "卖出 " + name + " ×" + count + "，回收价 " + Cents.format(unit) + " 币");
+        ctx.ledger.issue(account, total, ledgerKind, account.name,
+                actionLabel + " " + name + " ×" + count + "，单价 " + Cents.format(unit) + " 币");
         try {
             account.lastTradeAtMs = now;
             ctx.market.addImpact(item.id, Math.negateExact(total));
@@ -302,8 +315,8 @@ public final class TradeService {
         } catch (RuntimeException error) {
             Log.warn("卖出后记录冲击/成交额失败（订单已成交）", error);
         }
-        return ActionResult.ok("卖出 " + name + " ×" + count
-                + "，回收价 " + Cents.format(unit) + " 币/个，共 " + Cents.format(total)
+        return ActionResult.ok(actionLabel + " " + name + " ×" + count
+                + "，单价 " + Cents.format(unit) + " 币/个，共 " + Cents.format(total)
                 + " 币，余额 " + Cents.format(account.balanceCents()) + " 币");
     }
 

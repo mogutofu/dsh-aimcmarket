@@ -75,6 +75,8 @@ public final class MarketCommand {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(rootName).executes(MarketCommand::rootHelp);
         root.then(Commands.literal("help").executes(MarketCommand::rootHelp));
         root.then(Commands.literal("id").executes(MarketCommand::heldItemInfo));
+        root.then(Commands.literal("return").then(Commands.argument("args", StringArgumentType.greedyString())
+                .executes(MarketCommand::returnArgs)));
         root.then(Commands.literal("alias").then(Commands.argument("name", StringArgumentType.greedyString())
                 .executes(MarketCommand::aliasHeld)));
         root.then(Commands.literal("balance").executes(MarketCommand::balance));
@@ -527,6 +529,132 @@ public final class MarketCommand {
         return ItemResolver.searchByTokens(tokens);
     }
 
+    /** 记一条买入（退货用）。 */
+    private static void recordPurchase(Account account, MarketStore.CatalogItem item, int count) {
+        AimcContext ctx = ctx();
+        if (ctx == null || account == null || item == null || count <= 0) {
+            return;
+        }
+        try {
+            ctx.purchases.record(account.uuid, item.id, count,
+                    TradeService.effectiveAskCents(ctx, item.id), ctx.nowMs());
+        } catch (RuntimeException error) {
+            com.mogutofu.aimcmarket.util.Log.warn("记录买入失败（这单可能无法退货）", error);
+        }
+    }
+
+    /** 收购：按当前市场价收玩家背包里的物品（AI 刚定价的物品也算）。 */
+    private static void acquireFromPlayer(CommandSourceStack source, Account account,
+                                         MarketStore.CatalogItem item, int requested) {
+        if (!ready(source) || item == null) {
+            return;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            Messages.sendFail(source, "你已经下线了，收购取消");
+            return;
+        }
+        int available = countItem(player, item.id);
+        int count = requested > 0 ? Math.min(requested, available) : available;
+        if (count <= 0) {
+            Messages.sendFail(source, "背包里没有 " + item.nameZh);
+            return;
+        }
+        long unit = ctx().market.price(item.id);
+        if (unit <= 0L) {
+            unit = item.basePriceCents;
+        }
+        ActionResult result = TradeService.sellWithPrice(ctx(), account, item.id, count, unit,
+                "收购", "trade.buyback");
+        if (!result.ok) {
+            send(source, result);
+            return;
+        }
+        removeItem(player, item.id, count);
+        send(source, result);
+        tickGovernment(source);
+    }
+
+    /** 退货：7 天内买的物品按原买入价退款（只退背包里还在的部分）。 */
+    private static void returnItem(CommandSourceStack source, Account account,
+                                   MarketStore.CatalogItem item, int requested) {
+        if (!ready(source) || item == null) {
+            return;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            Messages.sendFail(source, "你已经下线了，退货取消");
+            return;
+        }
+        AimcContext ctx = ctx();
+        long now = ctx.nowMs();
+        int available = countItem(player, item.id);
+        int returnable = ctx.purchases.returnable(account.uuid, item.id, now);
+        int limit = Math.min(available, returnable);
+        int count = requested > 0 ? Math.min(requested, limit) : limit;
+        if (count <= 0) {
+            if (returnable <= 0) {
+                Messages.sendFail(source, "没有可退货的「" + item.nameZh + "」记录（只支持 7 天内在本市场买的）。");
+                Messages.sendInfo(source, "想按市价卖可以走收购：/ex 把背包里的 " + item.nameZh + " 收购掉");
+            } else {
+                Messages.sendFail(source, "背包里只剩 " + available + " 个可退 " + Math.min(returnable, available) + " 个。");
+            }
+            return;
+        }
+        long refund = ctx.purchases.refund(account.uuid, item.id, count, now);
+        if (refund <= 0L) {
+            Messages.sendFail(source, "退货记录已失效，稍后再试");
+            return;
+        }
+        try {
+            ctx.ledger.issue(account, refund, "trade.return", account.name,
+                    "退货 " + item.nameZh + " ×" + count + "，退款 " + com.mogutofu.aimcmarket.util.Cents.format(refund) + " 币");
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "退货记账失败：" + error.getMessage());
+            return;
+        }
+        removeItem(player, item.id, count);
+        player.sendSystemMessage(Messages.ok("退货 " + item.nameZh + " ×" + count + "，退款 "
+                + Messages.money(refund) + " 币，余额 " + Messages.money(account.balanceCents()) + " 币"));
+        tickGovernment(source);
+    }
+
+    /** /ex return <物品> [数量]：显式退货（数量省略=背包里可退的全退）。 */
+    private static int returnArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String raw = text(context, "args").trim();
+        if (raw.isEmpty()) {
+            Messages.sendFail(source, "用法：/ex return <物品> [数量]，例：/ex return 铁锭 3");
+            return 0;
+        }
+        int count = 0;
+        String itemText = raw;
+        String[] parts = raw.split("\s+");
+        if (parts.length >= 2) {
+            String last = parts[parts.length - 1];
+            try {
+                count = Integer.parseInt(last);
+                itemText = raw.substring(0, raw.length() - last.length()).trim();
+            } catch (NumberFormatException ignored) {
+                count = 0;
+            }
+        }
+        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
+        if (item == null) {
+            Messages.sendFail(source, "目录里没有「" + itemText + "」，没买过的东西不能退。");
+            return 0;
+        }
+        returnItem(source, account, item, count);
+        return Command.SINGLE_SUCCESS;
+    }
+
     /** 真正执行买/卖（目录里有没有都走这里）。 */
     private static void performBuySell(CommandSourceStack source, Account account, MarketStore.CatalogItem item,
                                        int count, boolean buying) {
@@ -544,6 +672,7 @@ public final class MarketCommand {
                 send(source, result);
                 return;
             }
+            recordPurchase(account, item, count);
             int left = giveItem(mcPlayer, item.id, count);
             if (left > 0) {
                 Messages.sendInfo(source, "背包放不下 " + left + " 个，已掉在脚下");
@@ -830,7 +959,8 @@ public final class MarketCommand {
         Messages.sendInfo(source, "/ex fund buy|sell <代码> <金额>｜/ex bank deposit|withdraw <金额>｜/ex bank loan take");
         Messages.sendInfo(source, "/ex company create <名字> <行业>｜/ex company hire <人数>｜/ex ipo apply <比例>｜/ex ipo confirm");
         Messages.sendInfo(source, "/ex fut long|short <标的> <手数> <天数>｜/ex opt buy|sell <call|put> <代码> <行权价> <天数> <张数>");
-        Messages.sendInfo(source, "/ex gov status｜/ex 直接说人话（例：/ex 买 3 个铁锭）");
+        Messages.sendInfo(source, "/ex gov status｜/ex return <物品> [数量]（7 天内买的按原价退）");
+        Messages.sendInfo(source, "/ex 直接说人话：买 3 个铁锭｜把背包里的铁锭收购掉｜退货 铁锭 2");
         if (account != null) {
             Messages.sendOk(source, "余额 " + Messages.money(account.balanceCents())
                     + "｜大盘 " + ctx().stocks.formatIndex() + "（" + Messages.changeText(ctx().stocks.indexChange7d(ctx().tradingDay())) + "）");
@@ -1169,7 +1299,8 @@ public final class MarketCommand {
                 ? data.get("action").getAsString().trim().toLowerCase(java.util.Locale.ROOT) : "none";
         boolean buying = "buy".equals(action);
         boolean selling = "sell".equals(action);
-        if (!buying && !selling) {
+        boolean returning = "return".equals(action);
+        if (!buying && !selling && !returning) {
             // 不是买卖：当作问题交给只读问答
             askChat(account.uuid, text);
             return;
@@ -1177,7 +1308,8 @@ public final class MarketCommand {
         int quantity = 1;
         if (data.has("quantity")) {
             try {
-                quantity = Math.max(1, Math.min(576, data.get("quantity").getAsInt()));
+                // 0 表示"背包里全部"（收购/退货常用）
+                quantity = Math.max(0, Math.min(576, data.get("quantity").getAsInt()));
             } catch (RuntimeException ignored) {
                 quantity = 1;
             }
@@ -1211,7 +1343,13 @@ public final class MarketCommand {
         if (!itemName.isBlank()) {
             ctx.market.addAlias(item.id, itemName);
         }
-        performBuySell(source, account, item, quantity, buying);
+        if (buying) {
+            performBuySell(source, account, item, quantity, true);
+        } else if (returning) {
+            returnItem(source, account, item, quantity);
+        } else {
+            acquireFromPlayer(source, account, item, quantity);
+        }
     }
 
     /** 给买卖意图 AI 的上下文：模组命名空间 + 目录样例 + 玩家余额。 */
@@ -1617,6 +1755,9 @@ public final class MarketCommand {
                         String id = one.get("id").getAsString();
                         int count = one.has("count") ? one.get("count").getAsInt() : 1;
                         ActionResult result = TradeService.buy(ctx, account, id, count);
+                        if (result.ok) {
+                            recordPurchase(account, ctx.market.item(id), count);
+                        }
                         if (result.ok && buyer != null) {
                             int left = giveItem(buyer, id, count);
                             if (left > 0) {
