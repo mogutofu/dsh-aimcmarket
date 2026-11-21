@@ -1297,6 +1297,14 @@ public final class MarketCommand {
         }
         String action = data != null && data.has("action")
                 ? data.get("action").getAsString().trim().toLowerCase(java.util.Locale.ROOT) : "none";
+        // 玩家原话里明确说"退"就按退货处理（别让 AI 把退货当成收购）
+        String spoken = text == null ? "" : text;
+        if (spoken.contains("退")) {
+            action = "return";
+        } else if (spoken.contains("收购") || spoken.contains("卖掉") || spoken.contains("卖了")
+                || spoken.contains("出售") || spoken.contains("回收")) {
+            action = "sell";
+        }
         boolean buying = "buy".equals(action);
         boolean selling = "sell".equals(action);
         boolean returning = "return".equals(action);
