@@ -78,6 +78,27 @@ class PersistenceTest {
     }
 
     @Test
+    void npcStockPriceAndStateSurviveReload() {
+        AimcContext ctx = load();
+        assertEquals(10, ctx.stocks.all().size(), "默认应该有 10 家 NPC 上市公司");
+        com.mogutofu.aimcmarket.data.StockStore.Stock blk = ctx.stocks.stock("BLK");
+        assertNotNull(blk, "BLK 应存在");
+        blk.priceCents = 13_300L;
+        blk.lastDividendDay = 3L;
+        blk.lastOutlook = "up";
+        ctx.saveAll();
+
+        AimcContext reloaded = AimcContext.load(tempDir, tempDir.resolve("config"),
+                MarketSettings.defaults(), NOW_MS + 5_000L, 7L);
+        com.mogutofu.aimcmarket.data.StockStore.Stock again = reloaded.stocks.stock("BLK");
+        assertNotNull(again, "重新加载后 BLK 应存在");
+        assertEquals(13_300L, again.priceCents, "重启后股价应保留，不能被重置成初始价");
+        assertEquals(3L, again.lastDividendDay, "重启后分红日应保留");
+        assertEquals("up", again.lastOutlook, "重启后财报展望应保留");
+        assertEquals(10, reloaded.stocks.all().size(), "重新加载后仍是 10 家 NPC 公司");
+    }
+
+    @Test
     void corruptAccountsFileLoadsAsEmptyInsteadOfCrashing() throws Exception {
         Path dataDir = tempDir.resolve("world").resolve("aimcmarket");
         Files.createDirectories(dataDir);

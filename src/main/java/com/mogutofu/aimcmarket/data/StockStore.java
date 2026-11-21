@@ -89,7 +89,7 @@ public final class StockStore {
         }
     }
 
-    /** 5 家 NPC 上市公司（行业景气/财报/分红都按交易日走）。 */
+    /** 10 家 NPC 上市公司（行业景气/财报/分红都按交易日走）。 */
     public static final String[][] NPC_COMPANIES = {
             // 代码, 名称, 行业, 初始价（币）, 波动 sigma, 年化股息率
             {"BLK", "方块重工", "工业", "120", "0.018", "0.025"},
@@ -97,6 +97,11 @@ public final class StockStore {
             {"NTL", "下界能源", "能源", "80", "0.025", "0.040"},
             {"END", "末地物流", "物流", "45", "0.020", "0.010"},
             {"EMR", "绿宝石银行", "金融", "200", "0.012", "0.030"},
+            {"GRN", "绿野农业", "农业", "40", "0.015", "0.020"},
+            {"MED", "药水制药", "医药", "150", "0.028", "0.015"},
+            {"ARS", "红石军械", "军工", "90", "0.030", "0.010"},
+            {"BOK", "附魔书屋", "传媒", "60", "0.022", "0.025"},
+            {"ORB", "轨道航运", "航天", "260", "0.040", "0.005"},
     };
 
     private final Path file;
@@ -116,7 +121,6 @@ public final class StockStore {
         sectorClimate.clear();
         reports.clear();
         indexByDay.clear();
-        seedNpcIfMissing();
 
         JsonObject root = JsonFile.readObject(file);
         if (root != null) {
@@ -125,7 +129,7 @@ public final class StockStore {
                     continue;
                 }
                 Stock stock = stockFromJson(element.getAsJsonObject());
-                if (stock != null && !stocks.containsKey(stock.code)) {
+                if (stock != null) {
                     stocks.put(stock.code, stock);
                 }
             }
@@ -151,7 +155,8 @@ public final class StockStore {
             indexCentiPoints = JsonFile.lng(root, "indexCentiPoints", indexCentiPoints);
             lastClimateDay = JsonFile.lng(root, "lastClimateDay", -1L);
         }
-        // 补齐 NPC 配置里新增的公司（版本升级用）
+        // 先读盘里的股票，再补齐 NPC 配置里缺的公司（版本升级/新增上市公司用）——
+        // 顺序不能反，否则每次重启都会把持久化的股价/财报/分红状态覆盖回初始值。
         seedNpcIfMissing();
         for (String[] spec : NPC_COMPANIES) {
             sectorClimate.putIfAbsent(spec[2], 1.0);

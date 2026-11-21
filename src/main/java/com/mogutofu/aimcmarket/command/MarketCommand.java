@@ -95,16 +95,19 @@ public final class MarketCommand {
                         .executes(MarketCommand::price)));
         root.then(Commands.literal("news")
                 .executes(context -> news(context, 1))
-                .then(Commands.argument("page", IntegerArgumentType.integer(1, 99)).executes(MarketCommand::news)));
+                .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
+                        .executes(context -> news(context, IntegerArgumentType.getInteger(context, "page")))));
         root.then(Commands.literal("board")
                 .executes(context -> board(context, 1))
-                .then(Commands.argument("page", IntegerArgumentType.integer(1, 99)).executes(MarketCommand::board)));
+                .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
+                        .executes(context -> board(context, IntegerArgumentType.getInteger(context, "page")))));
         root.then(Commands.literal("top").executes(MarketCommand::top));
         root.then(Commands.literal("history").executes(MarketCommand::history));
         root.then(Commands.literal("stock")
                 .executes(context -> stockList(context, 1))
                 .then(Commands.literal("list").executes(context -> stockList(context, 1))
-                        .then(Commands.argument("page", IntegerArgumentType.integer(1, 99)).executes(MarketCommand::stockList)))
+                        .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
+                        .executes(context -> stockList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("buy")
                         .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
                                 .then(Commands.argument("shares", LongArgumentType.longArg(1, 10_000_000))
@@ -119,7 +122,8 @@ public final class MarketCommand {
         root.then(Commands.literal("fund")
                 .executes(context -> fundList(context, 1))
                 .then(Commands.literal("list").executes(context -> fundList(context, 1))
-                        .then(Commands.argument("page", IntegerArgumentType.integer(1, 99)).executes(MarketCommand::fundList)))
+                        .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
+                        .executes(context -> fundList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("buy")
                         .then(Commands.argument("code", StringArgumentType.word()).suggests(fundCodes())
                                 .then(Commands.argument("amount", StringArgumentType.word())
@@ -920,8 +924,11 @@ public final class MarketCommand {
         List<String> lines = new ArrayList<>();
         for (StockStore.Stock stock : ctx().stocks.all()) {
             long held = account == null ? 0L : account.stockShares(stock.code);
+            double change = stock.initialPriceCents <= 0L ? 0.0
+                    : (double) stock.priceCents / stock.initialPriceCents - 1.0;
             lines.add(stock.code + " " + stock.name + " " + Messages.money(stock.priceCents)
-                    + "（" + stock.sector + "）" + (held > 0 ? " 持有 " + held + " 股" : ""));
+                    + "（" + stock.sector + " " + Messages.changeText(change) + "）"
+                    + (held > 0 ? " 持有 " + held + " 股" : ""));
         }
         Messages.sendPage(source, lines, page, PER_PAGE, "/ex stock list");
         Messages.sendInfo(source, "大盘 " + ctx().stocks.formatIndex()
