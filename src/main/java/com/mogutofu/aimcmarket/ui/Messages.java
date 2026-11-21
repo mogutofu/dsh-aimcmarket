@@ -60,29 +60,39 @@ public final class Messages {
 
     // ── 发送 ──
 
-    /** 带 [市场] 前缀的普通消息。 */
-    public static void send(CommandSourceStack source, String text) {
-        source.sendSuccess(() -> market(text), false);
-    }
-
-    public static void send(CommandSourceStack source, Component component) {
+    /** 统一投递：玩家直接发系统消息（不依赖 sendCommandFeedback/命令反馈设置），控制台/RCON 走 sendSuccess。 */
+    private static void deliver(CommandSourceStack source, Component component) {
+        net.minecraft.server.level.ServerPlayer player = source.getPlayer();
+        if (player != null) {
+            player.sendSystemMessage(component);
+            return;
+        }
         source.sendSuccess(() -> component, false);
     }
 
+    /** 带 [市场] 前缀的普通消息。 */
+    public static void send(CommandSourceStack source, String text) {
+        deliver(source, market(text));
+    }
+
+    public static void send(CommandSourceStack source, Component component) {
+        deliver(source, component);
+    }
+
     public static void sendOk(CommandSourceStack source, String text) {
-        source.sendSuccess(() -> ok(text), false);
+        deliver(source, ok(text));
     }
 
     public static void sendFail(CommandSourceStack source, String text) {
-        source.sendSuccess(() -> fail(text), false);
+        deliver(source, fail(text));
     }
 
     public static void sendInfo(CommandSourceStack source, String text) {
-        source.sendSuccess(() -> info(text), false);
+        deliver(source, info(text));
     }
 
     public static void sendGov(CommandSourceStack source, String text) {
-        source.sendSuccess(() -> gov(text), false);
+        deliver(source, gov(text));
     }
 
     /** 多行文本（引擎层用 \n 分隔）。 */
@@ -98,7 +108,7 @@ public final class Messages {
     }
 
     public static void sendRaw(CommandSourceStack source, Component component) {
-        source.sendSuccess(() -> component, false);
+        deliver(source, component);
     }
 
     /** 全服广播（政策/破产/IPO）。 */

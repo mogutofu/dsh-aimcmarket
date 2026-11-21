@@ -874,6 +874,8 @@ public final class MarketCommand {
             return;
         }
         execute(account, parsed, message -> {
+            com.mogutofu.aimcmarket.util.Log.info("[本地解析结果] ok=" + message.ok
+                    + " intent=" + parsed + " → " + message.message);
             if (message.ok) {
                 player.sendSystemMessage(Messages.ok(message.message));
             } else {
@@ -897,6 +899,8 @@ public final class MarketCommand {
             return;
         }
         execute(account, parsed, message -> {
+            com.mogutofu.aimcmarket.util.Log.info("[AI 解析结果] ok=" + message.ok
+                    + " intent=" + parsed + " → " + message.message);
             if (message.ok) {
                 player.sendSystemMessage(Messages.ok(message.message));
             } else {
