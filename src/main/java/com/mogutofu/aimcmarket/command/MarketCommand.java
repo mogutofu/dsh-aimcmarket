@@ -1432,6 +1432,10 @@ public final class MarketCommand {
             return 0;
         }
         boolean aiReady = ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null;
+        // 常见查询直接在这里生成并发送：不依赖 AI，也不依赖嵌套命令执行（避免"只见执行、不见输出"）
+        if (sendDirectQuery(source, account, text)) {
+            return Command.SINGLE_SUCCESS;
+        }
         if (!aiReady) {
             // AI 关闭时只用本地解析的明确意图；不做关键词猜测，避免猜错物品
             JsonObject local = LocalParser.parse(text, ctx.market);
@@ -1557,6 +1561,125 @@ public final class MarketCommand {
             Messages.sendFail(source, "命令执行失败：" + error.getMessage());
             return false;
         }
+    }
+
+    /** 直接生成并发送常见查询结果（基金/持仓/流水/余额/银行/公司/政策/新闻/行情/期货/期权）。 */
+    private static boolean sendDirectQuery(CommandSourceStack source, Account account, String text) {
+        AimcContext ctx = ctx();
+        if (ctx == null || account == null || text == null || text.isBlank()) {
+            return false;
+        }
+        String t = text.trim();
+        // 带交易/操作动词的句子不算查询
+        for (String word : new String[]{"买", "卖", "收购", "退", "改名", "升级", "招", "雇", "投资",
+                "融资", "创建", "下单", "平仓", "开仓", "存", "取", "借", "还", "申请", "确认", "分红", "增发"}) {
+            if (t.contains(word)) {
+                // "买了哪些股票/持有哪些/基金持仓" 这类仍按查询处理
+                boolean queryPhrase = t.contains("买了哪些") || t.contains("持有哪些") || t.contains("持仓")
+                        || (t.contains("基金") && (t.contains("有哪些") || t.contains("我的")));
+                if (!queryPhrase) {
+                    return false;
+                }
+            }
+        }
+        String tag = null;
+        java.util.List<String> lines = null;
+        if (t.contains("基金")) {
+            tag = "基金";
+            lines = new java.util.ArrayList<>();
+            for (FundStore.Fund fund : ctx.funds.all()) {
+                long units = account.fundUnitsMilli(fund.code);
+                lines.add(fund.code + " " + fund.name + " 净值 " + ctx.funds.formatNav(fund.code)
+                        + (units > 0L ? " 持有 " + (units / 1000L) + " 份" : ""));
+            }
+        } else if (t.contains("持仓") || t.contains("买了哪些") || t.contains("持有哪些")
+                || t.contains("我有哪些股票") || t.contains("我的股票") || t.contains("股票")) {
+            tag = "股票";
+            lines = new java.util.ArrayList<>();
+            for (StockStore.Stock stock : ctx.stocks.all()) {
+                long held = account.stockShares(stock.code);
+                double change = stock.initialPriceCents <= 0L ? 0.0
+                        : (double) stock.priceCents / stock.initialPriceCents - 1.0;
+                lines.add(stock.code + " " + stock.name + " " + Messages.money(stock.priceCents)
+                        + "（" + stock.sector + " " + Messages.changeText(change)
+                        + (stock.realSymbol == null ? "" : " ·现实") + "）"
+                        + (held > 0L ? " 持有 " + held + " 股" : ""));
+            }
+        } else if (t.contains("流水") || t.contains("历史记录") || t.contains("交易记录")) {
+            tag = "流水";
+            lines = readLedgerFor(account.name, 12);
+        } else if (t.contains("余额")) {
+            com.mogutofu.aimcmarket.util.Log.info("[直查] 玩家=" + account.name + " 文本=" + t);
+            Messages.send(source, "余额 " + Messages.money(account.balanceCents())
+                    + "｜活期 " + Messages.money(account.bank.totalDepositsCents())
+                    + "｜贷款 " + Messages.money(account.bank.totalLoanCents()));
+            return true;
+        } else if (t.contains("银行") || t.contains("存款") || t.contains("贷款")) {
+            com.mogutofu.aimcmarket.util.Log.info("[直查] 玩家=" + account.name + " 文本=" + t);
+            Messages.send(source, "银行：活期 " + Messages.money(account.bank.totalDepositsCents())
+                    + "｜贷款 " + Messages.money(account.bank.totalLoanCents())
+                    + "｜信用分 " + Math.round(account.creditScore));
+            Messages.sendInfo(source, "利率：" + Messages.percent(ctx.bank.currentRate(ctx.government.policyRate, ctx.settings))
+                    + "（活期）｜存款可用 /ex bank deposit 金额");
+            return true;
+        } else if (t.contains("公司")) {
+            tag = "公司";
+            lines = new java.util.ArrayList<>();
+            for (CompanyStore.Company company : ctx.companies.all()) {
+                boolean mine = company.ceoUuid.equals(account.uuid);
+                lines.add(company.name + (company.code == null ? "" : "(" + company.code + ")")
+                        + (company.listed ? " 已上市" : "") + (mine ? " ·你的公司" : "")
+                        + " 估值 " + Messages.money(company.valuationCents)
+                        + (mine ? " 现金 " + Messages.money(company.cashCents) + " Lv." + company.level : ""));
+            }
+        } else if (t.contains("政策") || t.contains("政府")) {
+            com.mogutofu.aimcmarket.util.Log.info("[直查] 玩家=" + account.name + " 文本=" + t);
+            Messages.send(source, "政策利率 " + Messages.percent(ctx.government.policyRate)
+                    + "｜交易税 " + Messages.percent(ctx.government.effectiveTradeTax())
+                    + "｜公司税 " + Messages.percent(ctx.government.effectiveCompanyTax())
+                    + "｜预算 " + Messages.money(ctx.government.budgetCents())
+                    + "｜压力 " + ctx.government.indicators.stress);
+            return true;
+        } else if (t.contains("新闻")) {
+            tag = "新闻";
+            lines = new java.util.ArrayList<>();
+            for (var item : ctx.news.recent(5)) {
+                lines.add(item.headline);
+            }
+        } else if (t.contains("行情") || t.contains("大盘") || t.contains("物价")) {
+            tag = "行情";
+            lines = new java.util.ArrayList<>();
+            int count = 0;
+            for (MarketStore.CatalogItem item : ctx.market.enabledItems()) {
+                if (count++ >= 8) {
+                    break;
+                }
+                lines.add(item.nameZh + " " + Messages.money(ctx.market.price(item.id))
+                        + "（买 " + Messages.money(TradeService.effectiveAskCents(ctx, item.id)) + "）");
+            }
+        } else if (t.contains("期货")) {
+            tag = "期货";
+            lines = new java.util.ArrayList<>();
+            for (var position : ctx.futures.of(account.uuid)) {
+                lines.add(position.id + " " + position.symbol + (position.longPosition ? " 多 " : " 空 ")
+                        + position.lots + " 手，开仓 " + Messages.money(position.entryPriceCents));
+            }
+        } else if (t.contains("期权")) {
+            tag = "期权";
+            lines = new java.util.ArrayList<>();
+            for (var position : ctx.options.of(account.uuid)) {
+                lines.add("#" + position.id + " " + position.underlying + " " + position.type
+                        + " 行权 " + Messages.money(position.strikeCents)
+                        + (position.writer ? " 卖方" : " 买方") + " " + position.contracts + " 张");
+            }
+        }
+        if (lines == null) {
+            return false;
+        }
+        com.mogutofu.aimcmarket.util.Log.info("[直查] 玩家=" + account.name + " 文本=" + t + " → " + tag
+                + "（" + lines.size() + " 行）");
+        Messages.sendPage(source, lines, 1, 9, "/ex " + ("股票".equals(tag) ? "stock list" : tag));
+        return true;
     }
 
     /** 本地快速路径：安全的只读查询 + 改名/升级公司。命中返回 true。 */
