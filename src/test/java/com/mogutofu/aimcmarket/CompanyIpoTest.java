@@ -137,21 +137,48 @@ class CompanyIpoTest {
     }
 
     @Test
-    void levelUpRequiresRevenueAndCash() {
+    void levelUpOnlyNeedsCash() {
         AimcContext ctx = newContext();
         Account ceo = newCeo(ctx);
         give(ctx, ceo, 2_000_000L);
         CompanyStore.Company company = createCompany(ctx, ceo, "升级测试公司");
 
-        assertFalse(CompanyEngine.levelUp(ctx, ceo, company).ok, "累计营收不足时不应能升级");
+        // 公司现金不够升级费 → 拒绝
+        assertFalse(CompanyEngine.levelUp(ctx, ceo, company).ok, "公司现金不足升级费时不应能升级");
         assertEquals(1, company.level, "被拒后等级应保持 1");
 
-        company.cumulativeRevenueCents = CompanyStore.LEVEL_REVENUE_REQUIRED[1];
+        // 不看员工数/累计营收，只要公司现金够升级费就能升
+        company.cumulativeRevenueCents = 0L;
+        company.employees = 0;
         giveCompany(ctx, company, CompanyStore.LEVEL_UP_FEE[1]);
         ActionResult up = CompanyEngine.levelUp(ctx, ceo, company);
-        assertTrue(up.ok, "满足营收 + 升级费后应该能升级：" + up.message);
+        assertTrue(up.ok, "交够升级费就应该能升级（不看员工/营收）：" + up.message);
         assertEquals(2, company.level, "升级后等级应为 2");
         assertTrue(ctx.ledger.isBalanced(), "升级后账本应平衡");
+    }
+
+    @Test
+    void investorCanFundCompanyForShares() {
+        AimcContext ctx = newContext();
+        Account ceo = newCeo(ctx);
+        give(ctx, ceo, 2_000_000L);
+        CompanyStore.Company company = createCompany(ctx, ceo, "融资测试公司");
+        Account partner = ctx.accounts.getOrCreate("00000000-0000-0000-0000-0000000000aa",
+                "Partner", NOW_MS, ctx.settings.startingBalanceCents, true);
+        give(ctx, partner, 2_000_000L);
+        long cashBefore = company.cashCents;
+        long balanceBefore = partner.balanceCents();
+
+        ActionResult invest = CompanyEngine.invest(ctx, partner, company, 100_000L);
+        assertTrue(invest.ok, "合伙人投资应该成功：" + invest.message);
+        assertEquals(cashBefore + 100_000L, company.cashCents, "投资款应进公司现金");
+        assertEquals(balanceBefore - 100_000L, partner.balanceCents(), "投资人应扣钱");
+        assertTrue(company.sharesOf(partner.uuid) > 0L, "投资人应拿到股份");
+        assertTrue(company.sharesOf(ceo.uuid) > company.sharesOf(partner.uuid), "CEO 仍应是大股东");
+        assertTrue(ctx.ledger.isBalanced(), "投资后账本应平衡");
+
+        // 单次想拿走近半股份 → 拒绝
+        assertFalse(CompanyEngine.invest(ctx, partner, company, 100_000_000L).ok, "单次投资最多拿 49% 股份");
     }
 
     @Test

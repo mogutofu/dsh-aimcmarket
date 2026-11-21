@@ -59,6 +59,7 @@ public final class AdminCommand {
                         .executes(AdminCommand::freeze)));
         admin.then(Commands.literal("reload").executes(AdminCommand::reload));
         admin.then(Commands.literal("save").executes(AdminCommand::save));
+        admin.then(Commands.literal("syncstocks").executes(AdminCommand::syncStocks));
         admin.then(Commands.literal("stats").executes(AdminCommand::stats));
         admin.then(Commands.literal("selftest").executes(AdminCommand::selfTest));
         admin.then(Commands.literal("cmdtree").executes(AdminCommand::cmdTree));
@@ -220,6 +221,23 @@ public final class AdminCommand {
         }
         Messages.sendInfo(source, "AI 链路：" + (ctx.ai == null ? "关闭" : ctx.settings.aiMode
                 + "（最近 " + ctx.ai.lastRoute() + "）") + "｜预算 " + ctx.settings.aiHourlyBudget + " 次/小时");
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** /ex admin syncstocks：立刻同步一次现实行情。 */
+    private static int syncStocks(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        com.mogutofu.aimcmarket.engine.RealStockRunner runner = com.mogutofu.aimcmarket.AimcmarketMod.realStockRunner();
+        if (runner == null) {
+            Messages.sendFail(source, "现实股票同步未启用：检查 config/aimcmarket/real-stocks.json 后重启服务器");
+            return 0;
+        }
+        runner.forceSync();
+        Messages.sendOk(source, "已触发现实行情同步，几秒后生效");
+        Messages.sendInfo(source, runner.summary());
         return Command.SINGLE_SUCCESS;
     }
 

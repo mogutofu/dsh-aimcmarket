@@ -83,6 +83,10 @@ AI 部分可选：装 `dsh-mc-server-ops` 0.7.0，在 DSH 设置面板里打开�
 | `/ex history` | 最近 12 条自己账户的流水 |
 | `/ex top` | 资产排行前 10 |
 
+### 现实股票同步
+
+config/aimcmarket/real-stocks.json 默认带 7 只美股（AAPL/MSFT/NVDA/TSLA/GOOG/AMZN/META）和 5 只大 A（贵州茅台/宁德时代/比亚迪/招商银行/中国平安），每 5 分钟从腾讯行情接口拉真实价格写进游戏股市（multiplier=100 表示现实 1 块钱 = 1 币）。现实股票不参与游戏内随机波动，价格跟着现实走；/ex stock list 里会标 ·现实，/ex stock info AAPL 显示同步时间。手动同步：/ex admin syncstocks。
+
 ### 商品市场（任意物品按需上市）
 
 目录里没有的物品不用改配置：AI 先查目录，没有再按稀有度/堆叠数/参考价估一个合理价，写进 config/aimcmarket/catalog.json 上市，然后按市价扣钱、给物品；之后它和内置商品一样受价格引擎（均值回归 + 随机波动 + 交易冲击 + AI 新闻事件）影响，动态商品波动率默认 5%，所以价格会明显变化。

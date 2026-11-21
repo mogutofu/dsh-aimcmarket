@@ -504,11 +504,6 @@ public final class CompanyStore {
         if (company.level >= 5) {
             throw new IllegalStateException("公司已经是 5 级了");
         }
-        long required = LEVEL_REVENUE_REQUIRED[company.level];
-        if (company.cumulativeRevenueCents < required) {
-            throw new IllegalStateException("累计营收不够：还差 "
-                    + Cents.format(required - company.cumulativeRevenueCents) + " 币");
-        }
         long fee = LEVEL_UP_FEE[company.level];
         if (company.cashCents < fee) {
             throw new IllegalStateException("公司现金不足，升级需要 " + Cents.format(fee) + " 币");
@@ -731,6 +726,43 @@ public final class CompanyStore {
         company.holders.merge("public", newShares, Long::sum);
         ledger.issue(company, amountCents, "company.raise", ceo.name, company.name + " 增发");
         company.lastRaiseDay = currentDay;
+        return newShares;
+    }
+
+    /**
+     * 合伙人/投资人入股：投资人转钱进公司账户，公司增发新股给投资人。
+     *
+     * <p>入股价格 = 公司估值 / 总股数；单次最多拿到公司 49% 股份（防止一笔买走）。
+     * 钱走 ledger.transfer（投资人 → 公司），账本两边都变，不会凭空多钱。</p>
+     *
+     * @return 本次获得的新股数
+     */
+    public long invest(Company company, Account investor, long amountCents, Ledger ledger) {
+        if (company == null || investor == null) {
+            throw new IllegalArgumentException("公司或投资人不存在");
+        }
+        if (company.bankrupt) {
+            throw new IllegalStateException("公司已破产，不能投资");
+        }
+        if (amountCents <= 0L) {
+            throw new IllegalArgumentException("投资金额必须大于 0");
+        }
+        if (investor.balanceCents() < amountCents) {
+            throw new IllegalStateException("余额不足，你只有 " + Cents.format(investor.balanceCents()) + " 币");
+        }
+        long valuation = Math.max(1L, company.valuationCents);
+        long sharePrice = Math.max(1L, valuation / Math.max(1L, company.sharesTotal));
+        long newShares = Math.max(1L, Math.round((double) amountCents / (double) sharePrice));
+        long totalAfter = Math.addExact(company.sharesTotal, newShares);
+        long percentMilli = Math.round(newShares * 1_000_000.0 / (double) totalAfter);
+        if (percentMilli > 490_000L) {
+            throw new IllegalStateException("单次投资最多拿到公司 49% 股份，请减少金额");
+        }
+        ledger.transfer(investor, company, amountCents, "company.invest", investor.name,
+                "投资「" + company.name + "」");
+        company.sharesTotal = totalAfter;
+        company.holders.merge(investor.uuid, newShares, Long::sum);
+        company.valuationCents = Math.addExact(valuation, amountCents);
         return newShares;
     }
 

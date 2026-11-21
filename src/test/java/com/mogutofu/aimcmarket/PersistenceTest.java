@@ -166,6 +166,27 @@ class PersistenceTest {
     }
 
     @Test
+    void realStockSyncPersistsAndSkipsRandomWalk() {
+        AimcContext ctx = load();
+        com.mogutofu.aimcmarket.data.StockStore.Stock stock = ctx.stocks.ensureRealStock(
+                "AAPL", "苹果", "科技", "usAAPL", "US", 10_000L);
+        assertNotNull(stock, "应该能新增现实股票");
+        ctx.stocks.applyRealQuote("AAPL", 34_256L, -0.02, NOW_MS);
+        assertEquals(34_256L, ctx.stocks.stock("AAPL").priceCents, "股价应被现实行情覆盖");
+        assertEquals(34_256L, ctx.stocks.stock("AAPL").initialPriceCents, "首次同步应把初始价设为现实价");
+        com.mogutofu.aimcmarket.engine.PriceEngine.tickStocks(ctx);
+        assertEquals(34_256L, ctx.stocks.stock("AAPL").priceCents, "现实股票不参与游戏内随机波动");
+        ctx.saveAll();
+
+        AimcContext reloaded = AimcContext.load(tempDir, tempDir.resolve("config"),
+                MarketSettings.defaults(), NOW_MS + 5_000L, 7L);
+        com.mogutofu.aimcmarket.data.StockStore.Stock again = reloaded.stocks.stock("AAPL");
+        assertNotNull(again, "重启后现实股票应还在");
+        assertEquals("usAAPL", again.realSymbol, "重启后现实代码应保留");
+        assertEquals(34_256L, again.priceCents, "重启后同步价应保留");
+    }
+
+    @Test
     void corruptAccountsFileLoadsAsEmptyInsteadOfCrashing() throws Exception {
         Path dataDir = tempDir.resolve("world").resolve("aimcmarket");
         Files.createDirectories(dataDir);

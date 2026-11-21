@@ -46,6 +46,7 @@ public final class AimcmarketMod {
 
     /** 全局状态（服务器启动时创建，停服清空）。 */
     private static volatile AimcContext context;
+    private static volatile com.mogutofu.aimcmarket.engine.RealStockRunner realStockRunner;
     private static MarketTicker ticker;
     private static ExecutorService aiPool;
     private static MinecraftServer serverRef;
@@ -62,6 +63,11 @@ public final class AimcmarketMod {
         MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(this::onPlayerLogin);
         LOGGER.info("AIMCmarket 已加载（纯服务端，无需客户端模组）");
+    }
+
+    /** 现实股票同步器（未启用时为 null）。 */
+    public static com.mogutofu.aimcmarket.engine.RealStockRunner realStockRunner() {
+        return realStockRunner;
     }
 
     public static AimcContext context() {
@@ -103,6 +109,19 @@ public final class AimcmarketMod {
         setupAsync(ctx, event.getServer());
         ticker = new MarketTicker();
         context = ctx;
+        // 现实股票行情同步（配置在 config/aimcmarket/real-stocks.json）
+        try {
+            com.mogutofu.aimcmarket.engine.RealStockFeed.Config realConfig =
+                    com.mogutofu.aimcmarket.engine.RealStockFeed.loadConfig(configDir);
+            if (realConfig.enabled && !realConfig.specs.isEmpty()) {
+                realStockRunner = new com.mogutofu.aimcmarket.engine.RealStockRunner(ctx, event.getServer(), realConfig);
+                realStockRunner.start();
+            } else {
+                LOGGER.info("现实股票同步未启用（real-stocks.json enabled=false 或没有股票）");
+            }
+        } catch (RuntimeException error) {
+            LOGGER.warn("现实股票同步启动失败（不影响其它功能）：{}", error.getMessage());
+        }
         LOGGER.info("AIMCmarket 启动：AI=" + (ai == null ? "关闭" : settings.aiMode)
                 + "，市场 tick=" + settings.marketTickMinutes + " 分钟");
     }
@@ -165,6 +184,10 @@ public final class AimcmarketMod {
             } catch (RuntimeException error) {
                 LOGGER.warn("停服保存失败：{}", error.getMessage());
             }
+        }
+        if (realStockRunner != null) {
+            realStockRunner.close();
+            realStockRunner = null;
         }
         if (aiPool != null) {
             aiPool.shutdownNow();

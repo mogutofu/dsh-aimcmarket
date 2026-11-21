@@ -180,6 +180,10 @@ public final class MarketCommand {
                         .executes(context -> companyClose(context, StringArgumentType.getString(context, "company")))))
                 .then(Commands.literal("raise").then(Commands.argument("args", StringArgumentType.greedyString())
                         .executes(MarketCommand::companyRaiseArgs)))
+                .then(Commands.literal("invest").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyInvestArgs)))
+                .then(Commands.literal("shareholders").then(Commands.argument("company", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyShareholdersArgs)))
                 .then(Commands.literal("info")
                         .executes(context -> companyInfo(context, null))
                         .then(Commands.argument("company", StringArgumentType.greedyString())
@@ -891,6 +895,60 @@ public final class MarketCommand {
         return companySector(context, parts[0], parts[1]);
     }
 
+    /** /ex company invest <公司> <金额>：合伙人给公司投钱换股份（融资）。 */
+    private static int companyInvestArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String[] parts = splitLast(text(context, "args"));
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(source, "用法：/ex company invest <公司> <金额>，例：/ex company invest 我的工厂 100");
+            return 0;
+        }
+        CompanyStore.Company company = findAnyCompany(parts[0]);
+        if (company == null) {
+            Messages.sendFail(source, "找不到公司：" + parts[0] + "（/ex company list 看列表）");
+            return 0;
+        }
+        long cents = Cents.parse(parts[1]);
+        if (cents <= 0L) {
+            Messages.sendFail(source, "金额格式不对，例：/ex company invest " + company.name + " 100");
+            return 0;
+        }
+        send(source, CompanyEngine.invest(ctx(), account, company, cents));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** /ex company shareholders <公司>：看股东名单和持股比例。 */
+    private static int companyShareholdersArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String companyName = text(context, "company").trim();
+        CompanyStore.Company company = findAnyCompany(companyName);
+        if (company == null) {
+            Messages.sendFail(source, "找不到公司：" + companyName);
+            return 0;
+        }
+        java.util.List<String> lines = CompanyEngine.shareholders(ctx(), company);
+        Messages.send(source, "公司「" + company.name + "」股东（共 " + company.sharesTotal + " 股，估值 "
+                + Messages.money(company.valuationCents) + " 币）：");
+        if (lines.isEmpty()) {
+            Messages.sendInfo(source, "还没有股东记录");
+        } else {
+            for (String line : lines) {
+                Messages.sendInfo(source, "· " + line);
+            }
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
     private static int companyRaiseArgs(CommandContext<CommandSourceStack> context) {
         String[] parts = splitLast(text(context, "args"));
         if (parts[1].isEmpty()) {
@@ -977,6 +1035,7 @@ public final class MarketCommand {
         Messages.sendInfo(source, "/ex company create <名字> <行业>｜/ex company hire <人数>｜/ex ipo apply <比例>｜/ex ipo confirm");
         Messages.sendInfo(source, "/ex fut long|short <标的> <手数> <天数>｜/ex opt buy|sell <call|put> <代码> <行权价> <天数> <张数>");
         Messages.sendInfo(source, "/ex gov status｜/ex return <物品> [数量]（7 天内买的按原价退）");
+        Messages.sendInfo(source, "/ex company invest <公司> <金额>（给公司投钱换股份）｜/ex company shareholders <公司>");
         Messages.sendInfo(source, "/ex 直接说人话：买 3 个铁锭｜把背包里的铁锭收购掉｜退货 铁锭 2");
         if (account != null) {
             Messages.sendOk(source, "余额 " + Messages.money(account.balanceCents())
@@ -1946,7 +2005,8 @@ public final class MarketCommand {
             double change = stock.initialPriceCents <= 0L ? 0.0
                     : (double) stock.priceCents / stock.initialPriceCents - 1.0;
             lines.add(stock.code + " " + stock.name + " " + Messages.money(stock.priceCents)
-                    + "（" + stock.sector + " " + Messages.changeText(change) + "）"
+                    + "（" + stock.sector + " " + Messages.changeText(change)
+                    + (stock.realSymbol == null ? "" : " ·现实") + "）"
                     + (held > 0 ? " 持有 " + held + " 股" : ""));
         }
         Messages.sendPage(source, lines, page, PER_PAGE, "/ex stock list");
@@ -1991,12 +2051,21 @@ public final class MarketCommand {
             return 0;
         }
         Account account = source.getPlayer() == null ? null : ctx().accounts.get(source.getPlayer().getUUID().toString());
-        String text = FinanceService.stockInfo(ctx(), account, StringArgumentType.getString(context, "code"));
+        String code = StringArgumentType.getString(context, "code");
+        String text = FinanceService.stockInfo(ctx(), account, code);
         if (text == null || text.isBlank()) {
             Messages.sendFail(source, "没有这个股票代码");
             return 0;
         }
         Messages.sendLines(source, text);
+        StockStore.Stock stock = ctx().stocks.stock(code);
+        if (stock != null && stock.realSymbol != null && !stock.realSymbol.isBlank()) {
+            String updated = stock.realUpdatedMs <= 0L ? "还没同步过"
+                    : new java.text.SimpleDateFormat("MM-dd HH:mm:ss").format(new java.util.Date(stock.realUpdatedMs));
+            Messages.sendInfo(source, "现实行情：" + stock.realSymbol + "（" + (stock.realMarket == null ? "" : stock.realMarket)
+                    + (stock.realMarket == null ? "" : "）") + "，当前股价按 " + stock.priceCents / 100.0
+                    + " 币映射，更新于 " + updated);
+        }
         return Command.SINGLE_SUCCESS;
     }
 
@@ -2216,6 +2285,31 @@ public final class MarketCommand {
         send(source, CompanyEngine.create(ctx(), account, name, sector));
         tickGovernment(source);
         return Command.SINGLE_SUCCESS;
+    }
+
+    /** 按名字/id/代码找任意公司（投资、股东名单用，不要求是 CEO）。 */
+    private static CompanyStore.Company findAnyCompany(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String value = text.trim();
+        for (CompanyStore.Company company : ctx().companies.all()) {
+            if (company.name.equalsIgnoreCase(value)
+                    || company.id.equalsIgnoreCase(value)
+                    || (company.code != null && company.code.equalsIgnoreCase(value))) {
+                return company;
+            }
+        }
+        CompanyStore.Company byName = ctx().companies.findByName(value);
+        if (byName != null) {
+            return byName;
+        }
+        for (CompanyStore.Company company : ctx().companies.all()) {
+            if (company.name.contains(value) || value.contains(company.name)) {
+                return company;
+            }
+        }
+        return null;
     }
 
     private static CompanyStore.Company resolveCompany(Account account, String text) {

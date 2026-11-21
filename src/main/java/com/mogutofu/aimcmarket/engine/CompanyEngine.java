@@ -462,12 +462,9 @@ public final class CompanyEngine {
             StringBuilder message = new StringBuilder();
             message.append("公司「").append(company.name).append("」升到 ").append(company.level).append(" 级！");
             if (company.level < 5) {
-                long required = CompanyStore.LEVEL_REVENUE_REQUIRED[company.level];
                 long fee = CompanyStore.LEVEL_UP_FEE[company.level];
-                message.append("下一级（").append(company.level + 1).append(" 级）需要累计营收 ")
-                        .append(Cents.format(required)).append(" 币（当前 ")
-                        .append(Cents.format(company.cumulativeRevenueCents)).append(" 币）+ 升级费 ")
-                        .append(Cents.format(fee)).append(" 币。");
+                message.append("下一级（").append(company.level + 1).append(" 级）只需升级费 ")
+                        .append(Cents.format(fee)).append(" 币（公司现金够就能升，不看员工/营收）。");
             } else {
                 message.append("已经是最高等级（5 级），员工上限 ").append(company.maxEmployees()).append(" 人。");
             }
@@ -478,6 +475,59 @@ public final class CompanyEngine {
             Log.warn("升级公司失败（" + company.name + "）", error);
             return ActionResult.fail("升级失败：" + reason(error));
         }
+    }
+
+    /**
+     * 合伙人/投资人入股：把钱投进公司，按估值换股份。
+     */
+    public static ActionResult invest(AimcContext ctx, Account investor, CompanyStore.Company company, long amountCents) {
+        if (ctx == null || investor == null) {
+            return ActionResult.fail("账户还没加载好，稍后再试");
+        }
+        if (company == null) {
+            return ActionResult.fail("找不到公司");
+        }
+        try {
+            long shares = ctx.companies.invest(company, investor, amountCents, ctx.ledger);
+            long mine = company.sharesOf(investor.uuid);
+            double percent = company.sharesTotal <= 0L ? 0.0 : mine * 100.0 / company.sharesTotal;
+            return ActionResult.ok("向「" + company.name + "」投资 " + Cents.format(amountCents)
+                    + " 币，获得 " + shares + " 股；你现在持有 " + mine + " 股（约 "
+                    + String.format(java.util.Locale.ROOT, "%.1f", percent) + "%），公司现金 "
+                    + Cents.format(company.cashCents) + " 币");
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            return ActionResult.fail(reason(error));
+        } catch (RuntimeException error) {
+            Log.warn("公司投资失败（" + company.name + "）", error);
+            return ActionResult.fail("投资失败：" + reason(error));
+        }
+    }
+
+    /** 股东列表文本（CEO + 合伙人 + 公众流通股）。 */
+    public static java.util.List<String> shareholders(AimcContext ctx, CompanyStore.Company company) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        if (ctx == null || company == null) {
+            return lines;
+        }
+        long total = Math.max(1L, company.sharesTotal);
+        for (java.util.Map.Entry<String, Long> entry : company.holders.entrySet()) {
+            long shares = entry.getValue() == null ? 0L : entry.getValue();
+            if (shares <= 0L) {
+                continue;
+            }
+            String name;
+            if ("public".equals(entry.getKey())) {
+                name = "公众流通股";
+            } else {
+                Account holder = ctx.accounts.get(entry.getKey());
+                name = holder == null ? entry.getKey() : holder.name;
+                if (entry.getKey().equals(company.ceoUuid)) {
+                    name = name + "（CEO）";
+                }
+            }
+            lines.add(name + " 持有 " + shares + " 股（" + String.format(java.util.Locale.ROOT, "%.1f", shares * 100.0 / total) + "%）");
+        }
+        return lines;
     }
 
     // ══════════════════════════════════════════════════════════════

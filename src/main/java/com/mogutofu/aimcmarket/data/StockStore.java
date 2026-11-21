@@ -54,6 +54,12 @@ public final class StockStore {
         public String industryClimateKey;
         /** 股价连续低于 1.00 币的交易日数（退市判定）。 */
         public int lowPriceDays;
+        /** 对应的现实股票代码（腾讯行情，如 usAAPL / sh600519）；null = 纯游戏股票。 */
+        public String realSymbol;
+        /** US / CN，仅用于展示。 */
+        public String realMarket;
+        /** 最近一次现实行情同步时间（毫秒）。 */
+        public long realUpdatedMs;
     }
 
     /** 一期财报。 */
@@ -243,6 +249,13 @@ public final class StockStore {
         json.addProperty("lastRevenueCents", stock.lastRevenueCents);
         json.addProperty("lastProfitCents", stock.lastProfitCents);
         json.addProperty("lowPriceDays", stock.lowPriceDays);
+        if (stock.realSymbol != null && !stock.realSymbol.isBlank()) {
+            json.addProperty("realSymbol", stock.realSymbol);
+        }
+        if (stock.realMarket != null && !stock.realMarket.isBlank()) {
+            json.addProperty("realMarket", stock.realMarket);
+        }
+        json.addProperty("realUpdatedMs", stock.realUpdatedMs);
         return json;
     }
 
@@ -273,8 +286,83 @@ public final class StockStore {
         stock.lastRevenueCents = JsonFile.lng(json, "lastRevenueCents", 0L);
         stock.lastProfitCents = JsonFile.lng(json, "lastProfitCents", 0L);
         stock.lowPriceDays = JsonFile.intVal(json, "lowPriceDays", 0);
+        String realSymbol = JsonFile.str(json, "realSymbol", "");
+        stock.realSymbol = realSymbol.isBlank() ? null : realSymbol;
+        String realMarket = JsonFile.str(json, "realMarket", "");
+        stock.realMarket = realMarket.isBlank() ? null : realMarket;
+        stock.realUpdatedMs = JsonFile.lng(json, "realUpdatedMs", 0L);
         stock.industryClimateKey = stock.sector;
         return stock;
+    }
+
+    // ── 现实股票 ──
+
+    /**
+     * 确保"现实股票"存在（新增不会覆盖已有价格/持仓/财报状态）。
+     * 初始价先用给定值，行情同步后会被真实价格覆盖。
+     */
+    public Stock ensureRealStock(String code, String name, String sector, String realSymbol,
+                                 String realMarket, long fallbackPriceCents) {
+        String key = code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+        if (key.isEmpty() || realSymbol == null || realSymbol.isBlank()) {
+            return null;
+        }
+        Stock existing = stocks.get(key);
+        if (existing != null) {
+            existing.realSymbol = realSymbol.trim();
+            existing.realMarket = realMarket;
+            if (name != null && !name.isBlank()) {
+                existing.name = name;
+            }
+            if (sector != null && !sector.isBlank()) {
+                existing.sector = sector;
+                existing.industryClimateKey = sector;
+            }
+            return existing;
+        }
+        Stock stock = new Stock();
+        stock.code = key;
+        stock.name = name == null || name.isBlank() ? key : name;
+        stock.sector = sector == null || sector.isBlank() ? "科技" : sector;
+        stock.initialPriceCents = Math.max(1L, fallbackPriceCents);
+        stock.priceCents = stock.initialPriceCents;
+        stock.volatility = 0.02;
+        stock.annualDividendRate = 0.0;
+        stock.npc = true;
+        stock.realSymbol = realSymbol.trim();
+        stock.realMarket = realMarket;
+        stock.sharesOutstanding = 1_000_000L;
+        stock.industryClimateKey = stock.sector;
+        stocks.put(key, stock);
+        sectorClimate.putIfAbsent(stock.sector, 1.0);
+        Log.info("新增现实股票：" + key + "（" + stock.name + " ↔ " + realSymbol + "）");
+        return stock;
+    }
+
+    /** 应用一条实时行情：价格覆盖成现实价（乘以倍率后的分），涨跌决定 outlook。 */
+    public void applyRealQuote(String code, long priceCents, double changeRatio, long updatedMs) {
+        Stock stock = stock(code);
+        if (stock == null || stock.realSymbol == null) {
+            return;
+        }
+        if (stock.realUpdatedMs <= 0L) {
+            // 第一次同步：把初始价设成现实价，涨跌幅从同步开始算，避免显示成 -90%
+            stock.initialPriceCents = Math.max(1L, priceCents);
+        }
+        stock.priceCents = Math.max(1L, priceCents);
+        stock.realUpdatedMs = updatedMs;
+        stock.lastOutlook = changeRatio > 0.002 ? "up" : changeRatio < -0.002 ? "down" : "flat";
+    }
+
+    /** 所有现实股票（行情同步用）。 */
+    public List<Stock> realStocks() {
+        List<Stock> result = new ArrayList<>();
+        for (Stock stock : stocks.values()) {
+            if (stock.realSymbol != null && !stock.realSymbol.isBlank()) {
+                result.add(stock);
+            }
+        }
+        return result;
     }
 
     // ── 查询 ──

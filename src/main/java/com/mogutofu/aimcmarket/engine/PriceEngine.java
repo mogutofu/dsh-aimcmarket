@@ -153,6 +153,10 @@ public final class PriceEngine {
             if (stock == null || stock.code == null) {
                 continue;
             }
+            if (stock.realSymbol != null && !stock.realSymbol.isBlank()) {
+                // 现实股票的价格由行情同步覆盖，不参与游戏内的随机波动
+                continue;
+            }
             try {
                 long initial = Math.max(1L, stock.initialPriceCents);
                 long current = stock.priceCents;
