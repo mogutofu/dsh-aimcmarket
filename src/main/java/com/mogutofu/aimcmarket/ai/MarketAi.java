@@ -377,9 +377,18 @@ public final class MarketAi implements AiGateway {
             if (root == null || !JsonFile.bool(root, "ok", false)) {
                 return null;
             }
-            JsonObject data = AiJson.parseLooseObject(JsonFile.str(root, "reply", ""));
+            String replyText = JsonFile.str(root, "reply", "");
+            JsonObject data = AiJson.parseLooseObject(replyText);
             if (data == null) {
-                Log.warn("[AI] 命令规划回复不是 JSON");
+                // 模型偶尔不按 JSON 输出：从回复文本里抠一条 /ex 命令兜底
+                String extracted = extractCommand(replyText);
+                if (extracted != null) {
+                    Log.info("[AI] 命令规划（从文本提取）：" + extracted);
+                    JsonObject wrapper = new JsonObject();
+                    wrapper.addProperty("command", extracted);
+                    return wrapper;
+                }
+                Log.warn("[AI] 命令规划回复既不是 JSON 也没有 /ex 命令");
                 return null;
             }
             if (!data.has("command")) {
@@ -391,6 +400,28 @@ public final class MarketAi implements AiGateway {
             Log.warn("[AI] 命令规划失败：" + describe(error));
             return null;
         }
+    }
+
+    /** 从一段自然语言里抠出第一条 /ex 命令（AI 没按 JSON 输出时的兜底）。 */
+    private static String extractCommand(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("/(?:ex|market|exchange)\\s+[a-zA-Z][^\\n\\r\"]{0,120}")
+                .matcher(text);
+        while (matcher.find()) {
+            String command = matcher.group().trim();
+            String rest = command.replaceFirst("^/(?:ex|market|exchange)\\s+", "");
+            int space = rest.indexOf(' ');
+            String root = (space < 0 ? rest : rest.substring(0, space)).toLowerCase(java.util.Locale.ROOT);
+            if (java.util.Set.of("help", "balance", "pay", "work", "daily", "id", "alias", "return", "buy",
+                    "sell", "buyback", "price", "news", "board", "top", "history", "stock", "fund", "bank",
+                    "company", "ipo", "fut", "opt", "gov").contains(root)) {
+                return command;
+            }
+        }
+        return null;
     }
 
     /**

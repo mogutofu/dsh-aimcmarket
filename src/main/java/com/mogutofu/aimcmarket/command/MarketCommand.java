@@ -1537,8 +1537,9 @@ public final class MarketCommand {
             cmd = "/" + cmd;
         }
         try {
-            source.getServer().getCommands().getDispatcher().execute(cmd, source);
-            return true;
+            int result = source.getServer().getCommands().getDispatcher().execute(cmd, source);
+            com.mogutofu.aimcmarket.util.Log.info("[代执行命令] " + cmd + " → result=" + result);
+            return result > 0;
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException error) {
             Messages.sendFail(source, "AI 生成的命令没执行成功：" + error.getMessage());
             return false;
@@ -1568,6 +1569,15 @@ public final class MarketCommand {
             if (mine.size() == 1) {
                 return executePlayerCommand(source, "/ex company levelup " + mine.get(0).name);
             }
+        }
+        // 2.5) 强查询短语优先（"我买了哪些股票"含"买"字但仍是查询）
+        if (t.contains("基金") && (t.contains("有哪些") || t.contains("什么") || t.contains("列表") || t.contains("净值") || t.contains("哪只"))) {
+            com.mogutofu.aimcmarket.util.Log.info("[本地查询] " + t + " → /ex fund list");
+            return executePlayerCommand(source, "/ex fund list");
+        }
+        if (t.contains("持仓") || t.contains("买了哪些") || t.contains("持有哪些") || t.contains("我的股票")) {
+            com.mogutofu.aimcmarket.util.Log.info("[本地查询] " + t + " → /ex stock list");
+            return executePlayerCommand(source, "/ex stock list");
         }
         // 3) 只读查询：带动作词就不拦截，交给 AI
         String[] actionWords = {"买", "卖", "收购", "退", "改名", "改叫", "升级", "招", "雇", "投资",
@@ -1608,6 +1618,7 @@ public final class MarketCommand {
         if (command == null) {
             return false;
         }
+        com.mogutofu.aimcmarket.util.Log.info("[本地查询] " + t + " → " + command);
         return executePlayerCommand(source, command);
     }
 
