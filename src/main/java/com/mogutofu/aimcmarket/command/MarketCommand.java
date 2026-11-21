@@ -1444,35 +1444,34 @@ public final class MarketCommand {
             }
             return Command.SINGLE_SUCCESS;
         }
-        // 只读查询和少数固定操作走本地快速路径：结果确定、不花 AI 配额，也避免 AI 把"查持仓"翻译成"查流水"
-        if (tryLocalQueryCommand(source, account, text)) {
-            return Command.SINGLE_SUCCESS;
-        }
         long now = System.currentTimeMillis();
         if (now - account.lastAiAtMs < ctx.settings.aiPlayerMinIntervalMs) {
             Messages.sendFail(source, "慢一点，AI 每 2 秒只能问一次");
             return 0;
         }
         account.lastAiAtMs = now;
-        Messages.sendInfo(source, "市场先生正在理解你的请求…");
+        // 先给玩家一个明确回执，避免"像卡住了"
+        Messages.sendInfo(source, "市场先生收到：「" + text + "」，正在处理…");
         JsonObject planContext = buildPlanContext(account);
         ctx.aiSubmitter.submit("plan", () -> ctx.ai.planCommand(account.name, text, planContext),
                 data -> {
                     String command = data != null && data.has("command")
                             ? data.get("command").getAsString().trim() : "";
-                    if (command.isEmpty()) {
-                        // 单纯问问题：走只读问答
-                        askChat(account.uuid, text);
-                        return;
+                    if (!command.isEmpty() && isAllowedPlayerCommand(command)) {
+                        Messages.sendInfo(source, "市场先生执行：" + command);
+                        if (executePlayerCommand(source, command)) {
+                            return;
+                        }
                     }
-                    if (!isAllowedPlayerCommand(command)) {
+                    if (!command.isEmpty() && !isAllowedPlayerCommand(command)) {
                         Messages.sendFail(source, "AI 想执行不允许的命令，已拦下：" + command);
-                        askChat(account.uuid, text);
+                    }
+                    // AI 没给出可用命令：再用本地快速查询兜底（基金/持仓/流水等）
+                    if (tryLocalQueryCommand(source, account, text)) {
                         return;
                     }
-                    if (!executePlayerCommand(source, command)) {
-                        askChat(account.uuid, text);
-                    }
+                    // 最后交给只读问答
+                    askChat(account.uuid, text);
                 });
         return Command.SINGLE_SUCCESS;
     }
