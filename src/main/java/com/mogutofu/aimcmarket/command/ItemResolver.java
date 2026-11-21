@@ -81,11 +81,59 @@ public final class ItemResolver {
         } catch (Exception error) {
             Log.warn("扫描物品语言文件失败（不影响按 id 买卖）：" + error.getMessage());
         }
+        // 服务器上的 KubeJS 自定义翻译 / 资源包也扫一遍，这些名字不在 mods jar 里
+        try {
+            Path root = net.minecraftforge.fml.loading.FMLPaths.GAMEDIR.get();
+            for (String dir : new String[]{"kubejs/assets", "resourcepacks"}) {
+                Path base = root.resolve(dir);
+                if (!Files.isDirectory(base)) {
+                    continue;
+                }
+                try (java.util.stream.Stream<Path> stream = Files.walk(base)) {
+                    stream.filter(path -> path.toString().replace('\\', '/').endsWith("/lang/zh_cn.json")
+                                    || path.toString().replace('\\', '/').endsWith("/lang/en_us.json"))
+                            .forEach(path -> scanLangFile(path, byName, zhById));
+                }
+            }
+        } catch (Exception error) {
+            Log.warn("扫描 KubeJS/资源包语言文件失败：" + error.getMessage());
+        }
         nameToId = byName;
         idToZh = zhById;
         ready = true;
         building = false;
         Log.info("物品名称索引完成：" + byName.size() + " 条（含中文名）");
+    }
+
+    private static void scanLangFile(Path file, Map<String, String> byName, Map<String, String> zhById) {
+        try {
+            String text = Files.readString(file, StandardCharsets.UTF_8);
+            addLangEntries(JsonParser.parseString(text).getAsJsonObject(), byName, zhById);
+        } catch (Exception ignored) {
+            // 单个文件坏了跳过
+        }
+    }
+
+    private static void addLangEntries(JsonObject root, Map<String, String> byName, Map<String, String> zhById) {
+        for (Map.Entry<String, com.google.gson.JsonElement> pair : root.entrySet()) {
+            String key = pair.getKey();
+            if (!(key.startsWith("item.") || key.startsWith("block."))) {
+                continue;
+            }
+            String rest = key.substring(key.indexOf('.') + 1);
+            int dot = rest.indexOf('.');
+            String id = (dot > 0 ? rest.substring(0, dot) + ":" + rest.substring(dot + 1) : rest)
+                    .toLowerCase(Locale.ROOT);
+            if (id.isEmpty() || !pair.getValue().isJsonPrimitive()) {
+                continue;
+            }
+            String value = pair.getValue().getAsString();
+            if (value.isBlank()) {
+                continue;
+            }
+            zhById.putIfAbsent(id, value.trim());
+            byName.putIfAbsent(normalize(value), id);
+        }
     }
 
     private static void scanJar(Path jar, Map<String, String> byName, Map<String, String> zhById) {
@@ -99,27 +147,7 @@ public final class ItemResolver {
                 }
                 try (InputStream input = zip.getInputStream(entry)) {
                     String text = new String(input.readAllBytes(), StandardCharsets.UTF_8);
-                    JsonObject root = JsonParser.parseString(text).getAsJsonObject();
-                    for (Map.Entry<String, com.google.gson.JsonElement> pair : root.entrySet()) {
-                        String key = pair.getKey();
-                        if (!(key.startsWith("item.") || key.startsWith("block."))) {
-                            continue;
-                        }
-                        // 例如 "item.create.cogwheel" → "create:cogwheel"
-                        String rest = key.substring(key.indexOf('.') + 1);
-                        int dot = rest.indexOf('.');
-                        String id = (dot > 0 ? rest.substring(0, dot) + ":" + rest.substring(dot + 1) : rest)
-                                .toLowerCase(Locale.ROOT);
-                        if (id.isEmpty() || !pair.getValue().isJsonPrimitive()) {
-                            continue;
-                        }
-                        String value = pair.getValue().getAsString();
-                        if (value.isBlank()) {
-                            continue;
-                        }
-                        zhById.putIfAbsent(id, value.trim());
-                        byName.putIfAbsent(normalize(value), id);
-                    }
+                    addLangEntries(JsonParser.parseString(text).getAsJsonObject(), byName, zhById);
                 } catch (Exception ignored) {
                     // 单个文件坏了跳过
                 }

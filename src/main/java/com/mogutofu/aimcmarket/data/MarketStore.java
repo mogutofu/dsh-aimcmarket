@@ -295,6 +295,30 @@ public final class MarketStore {
         return item;
     }
 
+    /** 给已有商品追加一个别名（玩家用 /ex alias 把自己客户端看到的名字绑上来）。 */
+    public CatalogItem addAlias(String id, String alias) {
+        if (id == null || alias == null || alias.isBlank()) {
+            return null;
+        }
+        String normalized = id.trim().toLowerCase(Locale.ROOT);
+        CatalogItem item = catalog.get(normalized);
+        if (item == null) {
+            return null;
+        }
+        String value = alias.trim().toLowerCase(Locale.ROOT);
+        if (item.aliases.contains(value) || item.nameZh.equalsIgnoreCase(alias.trim())) {
+            return item;
+        }
+        List<String> aliases = new ArrayList<>(item.aliases);
+        aliases.add(value);
+        CatalogItem updated = new CatalogItem(item.id, item.nameZh, aliases, item.basePriceCents,
+                item.volatility, item.liquidity, item.enabled);
+        catalog.put(normalized, updated);
+        persistCatalog();
+        Log.info("商品别名：" + item.nameZh + "（" + item.id + "）+= " + alias.trim());
+        return updated;
+    }
+
     /** 把当前目录写回 catalog.json（保留原有字段格式）。 */
     private void persistCatalog() {
         JsonObject root = new JsonObject();

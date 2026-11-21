@@ -218,6 +218,8 @@ public final class MarketAi implements AiGateway {
                 + "当前市场数据（JSON）：" + contextText(context) + "\n"
                 + "要求：直接用中文口语回答，120 字以内；不要 markdown、不要输出 JSON、不要解释你是 AI；"
                 + "只根据上面的数据回答，不要编造不存在的股票或物品；"
+                + "如果玩家要买卖但物品名服务器不认识（可能是客户端汉化名），告诉他：把该物品拿在主手，"
+                + "说 /ex 买手上的 数量；或用 /ex id 查物品 id 后 /ex buy <id> 数量。"
                 + "如果玩家想买卖/转账/开公司等，告诉他用对应的 /ex 命令，例如 /ex stock buy BLK 10、/ex buy 铁锭 3。";
     }
 

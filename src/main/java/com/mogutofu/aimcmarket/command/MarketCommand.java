@@ -74,6 +74,9 @@ public final class MarketCommand {
     private static LiteralArgumentBuilder<CommandSourceStack> build(String rootName) {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(rootName).executes(MarketCommand::rootHelp);
         root.then(Commands.literal("help").executes(MarketCommand::rootHelp));
+        root.then(Commands.literal("id").executes(MarketCommand::heldItemInfo));
+        root.then(Commands.literal("alias").then(Commands.argument("name", StringArgumentType.greedyString())
+                .executes(MarketCommand::aliasHeld)));
         root.then(Commands.literal("balance").executes(MarketCommand::balance));
         // 中文参数统一走 greedyString：Brigadier 的 word()/string() 只认 ASCII，中文会报"尾随数据"。
         root.then(Commands.literal("pay").then(Commands.argument("args", StringArgumentType.greedyString())
@@ -321,6 +324,21 @@ public final class MarketCommand {
             itemText = raw;
             count = 1;
         }
+        // "手上的/这个"：直接用玩家手里的物品
+        if (isHandKeyword(itemText)) {
+            String handId = handItemId(source.getPlayer());
+            if (handId == null) {
+                Messages.sendFail(source, "你主手没拿物品，先拿一个再试");
+                return 0;
+            }
+            MarketStore.CatalogItem handItem = ctx().market.item(handId);
+            if (handItem != null) {
+                performBuySell(source, account, handItem, count, buying);
+            } else {
+                ensureCatalogItem(source, handId, created -> performBuySell(source, account, created, count, buying));
+            }
+            return Command.SINGLE_SUCCESS;
+        }
         MarketStore.CatalogItem item = ctx().market.resolve(itemText);
         if (item != null) {
             performBuySell(source, account, item, count, buying);
@@ -377,6 +395,20 @@ public final class MarketCommand {
             return 0;
         }
         String itemText = text(context, "item");
+        if (isHandKeyword(itemText)) {
+            String handId = handItemId(source.getPlayer());
+            if (handId == null) {
+                Messages.sendFail(source, "你主手没拿物品，先拿一个再试");
+                return 0;
+            }
+            MarketStore.CatalogItem handItem = ctx().market.item(handId);
+            if (handItem != null) {
+                performPrice(source, handItem);
+            } else {
+                ensureCatalogItem(source, handId, created -> performPrice(source, created));
+            }
+            return Command.SINGLE_SUCCESS;
+        }
         MarketStore.CatalogItem item = ctx().market.resolve(itemText);
         if (item != null) {
             performPrice(source, item);
@@ -407,8 +439,9 @@ public final class MarketCommand {
         }
         ItemResolver.Found found = ItemResolver.resolve(itemText);
         if (found == null) {
-            String hint = ItemResolver.isReady() ? "" : "（物品索引还在构建，几秒后再试一次）";
-            Messages.sendFail(source, "市场里找不到这个物品：" + itemText + hint);
+            Messages.sendFail(source, "市场里找不到这个物品：" + itemText);
+            Messages.sendInfo(source, "如果是模组物品，把物品拿在主手说 /ex 买手上的 1；"
+                    + "或用 /ex id 查物品 id，再 /ex buy <id> 1。");
             return;
         }
         Messages.sendInfo(source, "目录里没有「" + found.displayName() + "」，市场先生正在给它定价…");
@@ -964,6 +997,123 @@ public final class MarketCommand {
         return Command.SINGLE_SUCCESS;
     }
 
+    /** 主手/手上的/这个 之类的关键词：用玩家手上拿的物品。 */
+    private static boolean isHandKeyword(String text) {
+        if (text == null) {
+            return false;
+        }
+        String t = text.trim().toLowerCase(java.util.Locale.ROOT).replace(" ", "");
+        return t.equals("hand") || t.equals("手上的") || t.equals("手上") || t.equals("手里")
+                || t.equals("手中的") || t.equals("这个") || t.equals("当前") || t.equals("主手")
+                || t.equals("这个物品") || t.equals("手里的");
+    }
+
+    /** 玩家主手物品的注册 id（主手空则看副手），没有返回 null。 */
+    private static String handItemId(ServerPlayer player) {
+        if (player == null) {
+            return null;
+        }
+        net.minecraft.world.item.ItemStack stack = player.getMainHandItem();
+        if (stack.isEmpty()) {
+            stack = player.getOffhandItem();
+        }
+        if (stack.isEmpty()) {
+            return null;
+        }
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+    }
+
+    /** 主手物品的中文/英文名（显示用）。 */
+    private static String handItemName(ServerPlayer player) {
+        if (player == null) {
+            return null;
+        }
+        net.minecraft.world.item.ItemStack stack = player.getMainHandItem();
+        if (stack.isEmpty()) {
+            stack = player.getOffhandItem();
+        }
+        return stack.isEmpty() ? null : stack.getHoverName().getString();
+    }
+
+    /** /ex alias <名字>：把主手物品和玩家习惯叫的名字绑定，之后 /ex 买 <名字> N 就能用。 */
+    private static int aliasHeld(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            Messages.sendFail(source, "这条命令只能游戏内用");
+            return 0;
+        }
+        String name = text(context, "name");
+        if (name.isBlank()) {
+            Messages.sendFail(source, "用法：主手拿着物品，输入 /ex alias <你习惯的叫法>");
+            return 0;
+        }
+        String id = handItemId(player);
+        if (id == null) {
+            Messages.sendFail(source, "把要绑定的物品拿在主手，再输入 /ex alias " + name);
+            return 0;
+        }
+        ensureCatalogItem(source, id, item -> {
+            ctx().market.addAlias(item.id, name);
+            Messages.sendOk(source, "记住了：「" + name + "」= " + item.nameZh + "（" + item.id
+                    + "）。以后直接 /ex 买 " + name + " 数量");
+        });
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** /ex id：看手上物品的 id，方便用 /ex buy <id> N 下单。 */
+    private static int heldItemInfo(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            Messages.sendFail(source, "这条命令只能游戏内用");
+            return 0;
+        }
+        String id = handItemId(player);
+        if (id == null) {
+            Messages.sendFail(source, "你主手没有拿物品");
+            return 0;
+        }
+        String name = handItemName(player);
+        MarketStore.CatalogItem item = ctx().market.item(id);
+        if (item != null) {
+            Messages.send(source, "手上：" + item.nameZh + "（" + id + "）现价 " + Messages.money(ctx().market.price(id)));
+        } else {
+            Messages.send(source, "手上：" + name + "（" + id + "）还没上市；说 /ex 买手上的 <数量> 会自动估价上市。");
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** 中文数字 1~99（"一""十五""六十四"）。 */
+    private static int chineseNumber(String text) {
+        String digits = "零一二三四五六七八九";
+        int value = 0;
+        int current = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == '十') {
+                current = current == 0 ? 1 : current;
+                value += current * 10;
+                current = 0;
+            } else if (ch == '两') {
+                current = 2;
+            } else {
+                int d = digits.indexOf(ch);
+                if (d < 0) {
+                    throw new NumberFormatException("不是中文数字：" + text);
+                }
+                current = d;
+            }
+        }
+        return value + current;
+    }
+
     /** 从"我要买64个齿轮"里抠出 买卖方向 / 数量 / 物品文本；抠不出返回 null。 */
     private static String[] parseTradeText(String text) {
         if (text == null || text.isBlank()) {
@@ -976,7 +1126,7 @@ public final class MarketCommand {
             return null;
         }
         java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("([0-9]+)\\s*(?:个|件|组|块|张|根|份|只|把|台|颗|枚)?\\s*([^0-9，,。;；]+)")
+                .compile("([0-9]+|[一二两三四五六七八九十]+)\\s*(?:个|件|组|块|张|根|份|只|把|台|颗|枚)?\\s*([^0-9，,。;；]+)")
                 .matcher(t);
         if (!matcher.find()) {
             return null;
@@ -992,7 +1142,7 @@ public final class MarketCommand {
             return null;
         }
         try {
-            int count = Integer.parseInt(countText);
+            int count = countText.matches("\\d+") ? Integer.parseInt(countText) : chineseNumber(countText);
             if (count < 1 || count > 576) {
                 return null;
             }
@@ -1011,15 +1161,43 @@ public final class MarketCommand {
         boolean buying = "buy".equals(parsed[0]);
         int count = Integer.parseInt(parsed[1]);
         String itemText = parsed[2];
+        // "手上的/这个"：直接用玩家手里的物品
+        if (isHandKeyword(itemText)) {
+            String handId = handItemId(source.getPlayer());
+            if (handId == null) {
+                Messages.sendFail(source, "你主手没拿物品，先拿一个再试");
+                return true;
+            }
+            MarketStore.CatalogItem handItem = ctx().market.item(handId);
+            if (handItem != null) {
+                performBuySell(source, account, handItem, count, buying);
+            } else {
+                ensureCatalogItem(source, handId, created -> performBuySell(source, account, created, count, buying));
+            }
+            return true;
+        }
         MarketStore.CatalogItem item = ctx().market.resolve(itemText);
         if (item != null) {
             performBuySell(source, account, item, count, buying);
             return true;
         }
-        if (ItemResolver.resolve(itemText) == null) {
-            return false;
+        if (ItemResolver.resolve(itemText) != null) {
+            ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
+            return true;
         }
-        ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
+        // 认不出中文名（可能是客户端汉化）：给出可执行的替代方案，别让玩家以为只能干等 AI
+        String handId = handItemId(source.getPlayer());
+        String handName = handItemName(source.getPlayer());
+        Messages.sendFail(source, "服务器认不出「" + itemText + "」这个名字（可能是客户端汉化名）。");
+        if (handId != null) {
+            Messages.sendInfo(source, "你现在主手拿着「" + handName + "」（" + handId + "），可以直接说：/ex "
+                    + (buying ? "买" : "卖") + "手上的 " + count);
+            Messages.sendInfo(source, "想以后用中文名：拿着它执行 /ex alias " + itemText);
+        } else {
+            Messages.sendInfo(source, "把要交易的物品拿在主手，再说：/ex " + (buying ? "买" : "卖") + "手上的 " + count
+                    + "；或者 /ex id 看物品 id，用 /ex " + (buying ? "buy" : "sell") + " <id> " + count);
+            Messages.sendInfo(source, "也可以拿着物品执行 /ex alias " + itemText + "，以后就能用这个名字买。");
+        }
         return true;
     }
 
