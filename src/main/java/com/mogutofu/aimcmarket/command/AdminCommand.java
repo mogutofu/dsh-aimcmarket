@@ -46,17 +46,14 @@ public final class AdminCommand {
         LiteralArgumentBuilder<CommandSourceStack> admin = Commands.literal("admin")
                 .requires(source -> source.hasPermission(2));
         admin.then(Commands.literal("setprice")
-                .then(Commands.argument("item", CnStringArgument.create()).suggests(itemNames())
-                        .then(Commands.argument("price", CnStringArgument.create())
-                                .executes(AdminCommand::setPrice))));
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(AdminCommand::setPrice)));
         admin.then(Commands.literal("give")
-                .then(Commands.argument("player", CnStringArgument.create()).suggests(playerNames())
-                        .then(Commands.argument("amount", CnStringArgument.create())
-                                .executes(context -> money(context, true)))));
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> money(context, true))));
         admin.then(Commands.literal("take")
-                .then(Commands.argument("player", CnStringArgument.create()).suggests(playerNames())
-                        .then(Commands.argument("amount", CnStringArgument.create())
-                                .executes(context -> money(context, false)))));
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> money(context, false))));
         admin.then(Commands.literal("freeze")
                 .then(Commands.argument("frozen", BoolArgumentType.bool())
                         .executes(AdminCommand::freeze)));
@@ -64,10 +61,11 @@ public final class AdminCommand {
         admin.then(Commands.literal("save").executes(AdminCommand::save));
         admin.then(Commands.literal("stats").executes(AdminCommand::stats));
         admin.then(Commands.literal("selftest").executes(AdminCommand::selfTest));
+        admin.then(Commands.literal("cmdtree").executes(AdminCommand::cmdTree));
         admin.then(Commands.literal("gov")
                 .then(Commands.literal("set")
-                        .then(Commands.argument("field", CnStringArgument.create()).suggests(govFields())
-                                .then(Commands.argument("value", CnStringArgument.create())
+                        .then(Commands.argument("field", StringArgumentType.word()).suggests(govFields())
+                                .then(Commands.argument("value", StringArgumentType.word())
                                         .executes(AdminCommand::govSet)))));
         return admin;
     }
@@ -84,19 +82,30 @@ public final class AdminCommand {
         return true;
     }
 
+    /** 拆出最后一段（"铁锭 12.5" → ["铁锭","12.5"]）。 */
+    private static String[] splitLast(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        int index = trimmed.lastIndexOf(' ');
+        if (index <= 0 || index == trimmed.length() - 1) {
+            return new String[]{trimmed, ""};
+        }
+        return new String[]{trimmed.substring(0, index).trim(), trimmed.substring(index + 1).trim()};
+    }
+
     private static int setPrice(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         if (!ready(source)) {
             return 0;
         }
-        MarketStore.CatalogItem item = ctx().market.resolve(StringArgumentType.getString(context, "item"));
+        String[] parts = splitLast(StringArgumentType.getString(context, "args"));
+        MarketStore.CatalogItem item = ctx().market.resolve(parts[0]);
         if (item == null) {
-            Messages.sendFail(source, "目录里没有这个物品");
+            Messages.sendFail(source, "目录里没有这个物品（用法：/ex admin setprice <物品> <价格>）");
             return 0;
         }
-        long cents = Cents.parse(StringArgumentType.getString(context, "price"));
+        long cents = Cents.parse(parts[1]);
         if (cents <= 0L) {
-            Messages.sendFail(source, "价格格式不对，单位是币，例：12.5");
+            Messages.sendFail(source, "价格格式不对，单位是币，例：/ex admin setprice 铁锭 12.5");
             return 0;
         }
         ctx().market.setPrice(item.id, cents);
@@ -109,12 +118,13 @@ public final class AdminCommand {
         if (!ready(source)) {
             return 0;
         }
-        Account target = ctx().accounts.findByName(StringArgumentType.getString(context, "player")).orElse(null);
+        String[] parts = splitLast(StringArgumentType.getString(context, "args"));
+        Account target = ctx().accounts.findByName(parts[0]).orElse(null);
         if (target == null) {
-            Messages.sendFail(source, "找不到玩家");
+            Messages.sendFail(source, "找不到玩家（用法：/ex admin " + (give ? "give" : "take") + " <玩家> <金额>）");
             return 0;
         }
-        long cents = Cents.parse(StringArgumentType.getString(context, "amount"));
+        long cents = Cents.parse(parts[1]);
         if (cents <= 0L) {
             Messages.sendFail(source, "金额格式不对");
             return 0;
@@ -272,6 +282,24 @@ public final class AdminCommand {
         return 0;
     }
 
+    /** 自检：命令树能否编码成网络包（编码失败 = 玩家进服会被踢）。 */
+    private static int cmdTree(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        try {
+            com.mojang.brigadier.tree.RootCommandNode root = source.getServer().getCommands().getDispatcher().getRoot();
+            @SuppressWarnings("rawtypes")
+            var packet = new net.minecraft.network.protocol.game.ClientboundCommandsPacket(
+                    (com.mojang.brigadier.tree.RootCommandNode<net.minecraft.commands.SharedSuggestionProvider>) root);
+            if (packet == null) {
+                throw new IllegalStateException("packet 为空");
+            }
+            Messages.sendOk(source, "命令树编码正常，客户端可以正常进服");
+            return Command.SINGLE_SUCCESS;
+        } catch (Throwable error) {
+            Messages.sendFail(source, "命令树编码失败（玩家会进不去服）：" + error);
+            return 0;
+        }
+    }
     private static int govSet(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         if (!ready(source)) {

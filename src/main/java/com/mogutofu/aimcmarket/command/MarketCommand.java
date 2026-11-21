@@ -75,24 +75,17 @@ public final class MarketCommand {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(rootName).executes(MarketCommand::rootHelp);
         root.then(Commands.literal("help").executes(MarketCommand::rootHelp));
         root.then(Commands.literal("balance").executes(MarketCommand::balance));
-        root.then(Commands.literal("pay")
-                .then(Commands.argument("player", CnStringArgument.create()).suggests(playerNames())
-                        .then(Commands.argument("amount", CnStringArgument.create())
-                                .executes(context -> pay(context, StringArgumentType.getString(context, "player"),
-                                        StringArgumentType.getString(context, "amount"))))));
+        // 中文参数统一走 greedyString：Brigadier 的 word()/string() 只认 ASCII，中文会报"尾随数据"。
+        root.then(Commands.literal("pay").then(Commands.argument("args", StringArgumentType.greedyString())
+                .executes(MarketCommand::payArgs)));
         root.then(Commands.literal("work").executes(MarketCommand::work));
         root.then(Commands.literal("daily").executes(MarketCommand::daily));
-        root.then(Commands.literal("buy")
-                .then(Commands.argument("item", CnStringArgument.create()).suggests(itemNames())
-                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 576))
-                                .executes(MarketCommand::buy))));
-        root.then(Commands.literal("sell")
-                .then(Commands.argument("item", CnStringArgument.create()).suggests(itemNames())
-                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 576))
-                                .executes(MarketCommand::sell))));
-        root.then(Commands.literal("price")
-                .then(Commands.argument("item", CnStringArgument.create()).suggests(itemNames())
-                        .executes(MarketCommand::price)));
+        root.then(Commands.literal("buy").then(Commands.argument("args", StringArgumentType.greedyString())
+                .executes(context -> buyArgs(context, true))));
+        root.then(Commands.literal("sell").then(Commands.argument("args", StringArgumentType.greedyString())
+                .executes(context -> buyArgs(context, false))));
+        root.then(Commands.literal("price").then(Commands.argument("item", StringArgumentType.greedyString())
+                .executes(MarketCommand::priceArgs)));
         root.then(Commands.literal("news")
                 .executes(context -> news(context, 1))
                 .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
@@ -109,15 +102,15 @@ public final class MarketCommand {
                         .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
                         .executes(context -> stockList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("buy")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
                                 .then(Commands.argument("shares", LongArgumentType.longArg(1, 10_000_000))
                                         .executes(MarketCommand::stockBuy))))
                 .then(Commands.literal("sell")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
                                 .then(Commands.argument("shares", LongArgumentType.longArg(1, 10_000_000))
                                         .executes(MarketCommand::stockSell))))
                 .then(Commands.literal("info")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
                                 .executes(MarketCommand::stockInfo))));
         root.then(Commands.literal("fund")
                 .executes(context -> fundList(context, 1))
@@ -125,102 +118,70 @@ public final class MarketCommand {
                         .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
                         .executes(context -> fundList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("buy")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(fundCodes())
-                                .then(Commands.argument("amount", CnStringArgument.create())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(fundCodes())
+                                .then(Commands.argument("amount", StringArgumentType.word())
                                         .executes(context -> fundBuy(context, StringArgumentType.getString(context, "code"),
                                                 StringArgumentType.getString(context, "amount"))))))
                 .then(Commands.literal("sell")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(fundCodes())
-                                .then(Commands.argument("amount", CnStringArgument.create())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(fundCodes())
+                                .then(Commands.argument("amount", StringArgumentType.word())
                                         .executes(context -> fundSell(context, StringArgumentType.getString(context, "code"),
                                                 StringArgumentType.getString(context, "amount"))))))
                 .then(Commands.literal("info")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(fundCodes())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(fundCodes())
                                 .executes(context -> fundInfo(context, StringArgumentType.getString(context, "code"))))));
         root.then(Commands.literal("bank")
                 .executes(MarketCommand::bankInfo)
                 .then(Commands.literal("balance").executes(MarketCommand::bankInfo))
                 .then(Commands.literal("info").executes(MarketCommand::bankInfo))
                 .then(Commands.literal("deposit")
-                        .then(Commands.argument("amount", CnStringArgument.create())
+                        .then(Commands.argument("amount", StringArgumentType.word())
                                 .executes(context -> bankDeposit(context, StringArgumentType.getString(context, "amount")))))
                 .then(Commands.literal("withdraw")
-                        .then(Commands.argument("amount", CnStringArgument.create())
+                        .then(Commands.argument("amount", StringArgumentType.word())
                                 .executes(context -> bankWithdraw(context, StringArgumentType.getString(context, "amount")))))
                 .then(Commands.literal("term")
                         .then(Commands.argument("days", IntegerArgumentType.integer(7, 30))
-                                .then(Commands.argument("amount", CnStringArgument.create())
+                                .then(Commands.argument("amount", StringArgumentType.word())
                                         .executes(context -> bankTerm(context, IntegerArgumentType.getInteger(context, "days"),
                                                 StringArgumentType.getString(context, "amount"))))))
                 .then(Commands.literal("loan")
                         .then(Commands.literal("take").executes(context -> bankLoan(context, null))
-                                .then(Commands.argument("amount", CnStringArgument.create())
+                                .then(Commands.argument("amount", StringArgumentType.word())
                                         .executes(context -> bankLoan(context, StringArgumentType.getString(context, "amount")))))
                         .then(Commands.literal("repay")
-                                .then(Commands.argument("amount", CnStringArgument.create())
+                                .then(Commands.argument("amount", StringArgumentType.word())
                                         .executes(context -> bankRepay(context, StringArgumentType.getString(context, "amount")))))));
         root.then(Commands.literal("company")
                 .executes(MarketCommand::companyList)
                 .then(Commands.literal("list").executes(MarketCommand::companyList))
-                .then(Commands.literal("create")
-                        .then(Commands.argument("name", CnStringArgument.create())
-                                .then(Commands.argument("sector", CnStringArgument.create()).suggests(sectorNames())
-                                        .executes(context -> companyCreate(context,
-                                                StringArgumentType.getString(context, "name"),
-                                                StringArgumentType.getString(context, "sector"))))))
-                .then(Commands.literal("deposit")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("amount", CnStringArgument.create())
-                                        .executes(context -> companyMoney(context, StringArgumentType.getString(context, "company"),
-                                                StringArgumentType.getString(context, "amount"), true)))))
-                .then(Commands.literal("withdraw")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("amount", CnStringArgument.create())
-                                        .executes(context -> companyMoney(context, StringArgumentType.getString(context, "company"),
-                                                StringArgumentType.getString(context, "amount"), false)))))
-                .then(Commands.literal("hire")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
-                                        .executes(context -> companyHire(context,
-                                                StringArgumentType.getString(context, "company"),
-                                                IntegerArgumentType.getInteger(context, "count"))))))
-                .then(Commands.literal("fire")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
-                                        .executes(context -> companyFire(context,
-                                                StringArgumentType.getString(context, "company"),
-                                                IntegerArgumentType.getInteger(context, "count"))))))
-                .then(Commands.literal("levelup")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .executes(context -> companyLevelUp(context, StringArgumentType.getString(context, "company")))))
-                .then(Commands.literal("dividend")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("ratio", CnStringArgument.create())
-                                        .executes(context -> companyDividend(context,
-                                                StringArgumentType.getString(context, "company"),
-                                                StringArgumentType.getString(context, "ratio"))))))
-                .then(Commands.literal("sector")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("sector", CnStringArgument.create()).suggests(sectorNames())
-                                        .executes(context -> companySector(context,
-                                                StringArgumentType.getString(context, "company"),
-                                                StringArgumentType.getString(context, "sector"))))))
-                .then(Commands.literal("close")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .executes(context -> companyClose(context, StringArgumentType.getString(context, "company")))))
-                .then(Commands.literal("raise")
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
-                                .then(Commands.argument("amount", CnStringArgument.create())
-                                        .executes(context -> companyRaise(context,
-                                                StringArgumentType.getString(context, "company"),
-                                                StringArgumentType.getString(context, "amount"))))))
+                .then(Commands.literal("create").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyCreateArgs)))
+                .then(Commands.literal("deposit").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> companyMoneyArgs(context, true))))
+                .then(Commands.literal("withdraw").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> companyMoneyArgs(context, false))))
+                .then(Commands.literal("hire").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> companyHireArgs(context, true))))
+                .then(Commands.literal("fire").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> companyHireArgs(context, false))))
+                .then(Commands.literal("levelup").then(Commands.argument("company", StringArgumentType.greedyString())
+                        .executes(context -> companyLevelUp(context, StringArgumentType.getString(context, "company")))))
+                .then(Commands.literal("dividend").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyDividendArgs)))
+                .then(Commands.literal("sector").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companySectorArgs)))
+                .then(Commands.literal("close").then(Commands.argument("company", StringArgumentType.greedyString())
+                        .executes(context -> companyClose(context, StringArgumentType.getString(context, "company")))))
+                .then(Commands.literal("raise").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyRaiseArgs)))
                 .then(Commands.literal("info")
                         .executes(context -> companyInfo(context, null))
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
+                        .then(Commands.argument("company", StringArgumentType.greedyString())
                                 .executes(context -> companyInfo(context, StringArgumentType.getString(context, "company"))))));
         root.then(Commands.literal("ipo")
                 .then(Commands.literal("status").executes(context -> ipoStatus(context, null))
-                        .then(Commands.argument("company", CnStringArgument.create()).suggests(companyNames())
+                        .then(Commands.argument("company", StringArgumentType.greedyString())
                                 .executes(context -> ipoStatus(context, StringArgumentType.getString(context, "company")))))
                 .then(Commands.literal("apply")
                         .then(Commands.argument("ratio", DoubleArgumentType.doubleArg(0.10, 0.49))
@@ -230,32 +191,32 @@ public final class MarketCommand {
                 .executes(MarketCommand::futuresList)
                 .then(Commands.literal("list").executes(MarketCommand::futuresList))
                 .then(Commands.literal("quote")
-                        .then(Commands.argument("symbol", CnStringArgument.create()).suggests(futureSymbols())
+                        .then(Commands.argument("symbol", StringArgumentType.word()).suggests(futureSymbols())
                                 .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                         .executes(MarketCommand::futuresQuote))))
                 .then(Commands.literal("long")
-                        .then(Commands.argument("symbol", CnStringArgument.create()).suggests(futureSymbols())
+                        .then(Commands.argument("symbol", StringArgumentType.word()).suggests(futureSymbols())
                                 .then(Commands.argument("lots", LongArgumentType.longArg(1, 10_000))
                                         .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                                 .executes(context -> futuresOpen(context, true))))))
                 .then(Commands.literal("short")
-                        .then(Commands.argument("symbol", CnStringArgument.create()).suggests(futureSymbols())
+                        .then(Commands.argument("symbol", StringArgumentType.word()).suggests(futureSymbols())
                                 .then(Commands.argument("lots", LongArgumentType.longArg(1, 10_000))
                                         .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                                 .executes(context -> futuresOpen(context, false))))))
                 .then(Commands.literal("close")
-                        .then(Commands.argument("id", CnStringArgument.create())
+                        .then(Commands.argument("id", StringArgumentType.word())
                                 .executes(context -> futuresClose(context, StringArgumentType.getString(context, "id")))))
                 .then(Commands.literal("positions").executes(MarketCommand::futuresPositions))
                 .then(Commands.literal("margin")
                         .then(Commands.literal("add")
-                                .then(Commands.argument("id", CnStringArgument.create())
-                                        .then(Commands.argument("amount", CnStringArgument.create())
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
                                                 .executes(context -> futuresMargin(context, StringArgumentType.getString(context, "id"),
                                                         StringArgumentType.getString(context, "amount"), true)))))
                         .then(Commands.literal("withdraw")
-                                .then(Commands.argument("id", CnStringArgument.create())
-                                        .then(Commands.argument("amount", CnStringArgument.create())
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("amount", StringArgumentType.word())
                                                 .executes(context -> futuresMargin(context, StringArgumentType.getString(context, "id"),
                                                         StringArgumentType.getString(context, "amount"), false)))))));
         root.then(Commands.literal("opt")
@@ -264,29 +225,29 @@ public final class MarketCommand {
                         .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
                                 .executes(context -> optionsList(context, IntegerArgumentType.getInteger(context, "page")))))
                 .then(Commands.literal("quote")
-                        .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
-                                .then(Commands.argument("strike", CnStringArgument.create())
+                        .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
+                                .then(Commands.argument("strike", StringArgumentType.word())
                                         .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                                 .executes(context -> optionsQuote(context,
                                                         StringArgumentType.getString(context, "code"),
                                                         StringArgumentType.getString(context, "strike"),
                                                         IntegerArgumentType.getInteger(context, "days")))))))
                 .then(Commands.literal("buy")
-                        .then(Commands.argument("callOrPut", CnStringArgument.create()).suggests(callPutSuggestions())
-                                .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
-                                        .then(Commands.argument("strike", CnStringArgument.create())
+                        .then(Commands.argument("callOrPut", StringArgumentType.word()).suggests(callPutSuggestions())
+                                .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
+                                        .then(Commands.argument("strike", StringArgumentType.word())
                                                 .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                                         .then(Commands.argument("contracts", LongArgumentType.longArg(1, 10_000))
                                                                 .executes(context -> optionsOpen(context, false))))))))
                 .then(Commands.literal("sell")
-                        .then(Commands.argument("callOrPut", CnStringArgument.create()).suggests(callPutSuggestions())
-                                .then(Commands.argument("code", CnStringArgument.create()).suggests(stockCodes())
-                                        .then(Commands.argument("strike", CnStringArgument.create())
+                        .then(Commands.argument("callOrPut", StringArgumentType.word()).suggests(callPutSuggestions())
+                                .then(Commands.argument("code", StringArgumentType.word()).suggests(stockCodes())
+                                        .then(Commands.argument("strike", StringArgumentType.word())
                                                 .then(Commands.argument("days", IntegerArgumentType.integer(1, 90))
                                                         .then(Commands.argument("contracts", LongArgumentType.longArg(1, 10_000))
                                                                 .executes(context -> optionsOpen(context, true))))))))
                 .then(Commands.literal("close")
-                        .then(Commands.argument("id", CnStringArgument.create())
+                        .then(Commands.argument("id", StringArgumentType.word())
                                 .executes(context -> optionsClose(context, StringArgumentType.getString(context, "id")))))
                 .then(Commands.literal("positions").executes(MarketCommand::optionsPositions)));
         root.then(Commands.literal("gov")
@@ -302,6 +263,176 @@ public final class MarketCommand {
                 .executes(context -> naturalLanguage(context, StringArgumentType.getString(context, "text"), false)));
         return root;
     }
+
+    // ── 中文参数解析（greedyString 拆参）──
+
+    /** 取 greedy 的整段文本。 */
+    private static String text(CommandContext<CommandSourceStack> context, String name) {
+        String value = StringArgumentType.getString(context, name);
+        return value == null ? "" : value.trim();
+    }
+
+    /** 拆出"最后一段"和"前面剩余"（例如 "铁锭 3" → ["铁锭","3"]）。 */
+    private static String[] splitLast(String text) {
+        String trimmed = text.trim();
+        int index = trimmed.lastIndexOf(' ');
+        if (index <= 0 || index == trimmed.length() - 1) {
+            return new String[]{trimmed, ""};
+        }
+        return new String[]{trimmed.substring(0, index).trim(), trimmed.substring(index + 1).trim()};
+    }
+
+    private static int parsePositiveInt(String value, int max) {
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed >= 1 && parsed <= max ? parsed : -1;
+        } catch (NumberFormatException error) {
+            return -1;
+        }
+    }
+
+    private static int payArgs(CommandContext<CommandSourceStack> context) {
+        String[] parts = splitLast(text(context, "args"));
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(context.getSource(), "用法：/ex pay <玩家> <金额>，例：/ex pay Steve 12.5");
+            return 0;
+        }
+        return pay(context, parts[0], parts[1]);
+    }
+
+    private static int buyArgs(CommandContext<CommandSourceStack> context, boolean buying) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String raw = text(context, "args");
+        String[] parts = splitLast(raw);
+        String itemText;
+        int count;
+        int parsed = parts[1].isEmpty() ? -1 : parsePositiveInt(parts[1], 576);
+        if (parsed > 0) {
+            itemText = parts[0];
+            count = parsed;
+        } else {
+            itemText = raw;
+            count = 1;
+        }
+        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
+        if (item == null) {
+            Messages.sendFail(source, (buying ? "目录里没有这个物品：" : "目录不收这个物品：") + itemText + "（/ex board 看目录）");
+            return 0;
+        }
+        ServerPlayer mcPlayer = source.getPlayer();
+        if (buying) {
+            ActionResult result = TradeService.buy(ctx(), account, item.id, count);
+            if (!result.ok) {
+                send(source, result);
+                return 0;
+            }
+            int left = giveItem(mcPlayer, item.id, count);
+            if (left > 0) {
+                Messages.sendInfo(source, "背包放不下 " + left + " 个，已掉在脚下");
+            }
+            send(source, result);
+            tickGovernment(source);
+            return Command.SINGLE_SUCCESS;
+        }
+        int have = countItem(mcPlayer, item.id);
+        if (have < count) {
+            Messages.sendFail(source, "背包里只有 " + have + " 个 " + item.nameZh);
+            return 0;
+        }
+        ActionResult result = TradeService.sell(ctx(), account, item.id, count);
+        if (!result.ok) {
+            send(source, result);
+            return 0;
+        }
+        removeItem(mcPlayer, item.id, count);
+        send(source, result);
+        tickGovernment(source);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int priceArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String itemText = text(context, "item");
+        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
+        if (item == null) {
+            Messages.sendFail(source, "目录里没有这个物品：" + itemText);
+            return 0;
+        }
+        long price = ctx().market.price(item.id);
+        Messages.send(source, item.nameZh + "（" + item.id + "）现价 " + Messages.money(price)
+                + "｜买价 " + Messages.money(TradeService.effectiveAskCents(ctx(), item.id))
+                + "｜回收价 " + Messages.money(TradeService.effectiveBidCents(ctx(), item.id)));
+        Messages.sendInfo(source, "基准价 " + Messages.money(item.basePriceCents)
+                + "｜波动 " + Messages.percent(item.volatility) + "｜流动性 " + Messages.money(item.liquidity));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int companyCreateArgs(CommandContext<CommandSourceStack> context) {
+        String[] parts = splitLast(text(context, "args"));
+        String sectorCode = sectorCode(parts[1]);
+        if (sectorCode == null || parts[0].isEmpty()) {
+            Messages.sendFail(context.getSource(), "用法：/ex company create <名字> <采矿|农业|制造|贸易|服务>");
+            return 0;
+        }
+        return companyCreate(context, parts[0], sectorCode);
+    }
+
+    private static int companyMoneyArgs(CommandContext<CommandSourceStack> context, boolean deposit) {
+        String[] parts = splitLast(text(context, "args"));
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(context.getSource(), "用法：/ex company " + (deposit ? "deposit" : "withdraw") + " <公司> <金额>");
+            return 0;
+        }
+        return companyMoney(context, parts[0], parts[1], deposit);
+    }
+
+    private static int companyHireArgs(CommandContext<CommandSourceStack> context, boolean hire) {
+        String[] parts = splitLast(text(context, "args"));
+        int count = parsePositiveInt(parts[1], 100);
+        if (count <= 0) {
+            Messages.sendFail(context.getSource(), "用法：/ex company " + (hire ? "hire" : "fire") + " <公司> <人数>");
+            return 0;
+        }
+        return hire ? companyHire(context, parts[0], count) : companyFire(context, parts[0], count);
+    }
+
+    private static int companyDividendArgs(CommandContext<CommandSourceStack> context) {
+        String[] parts = splitLast(text(context, "args"));
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(context.getSource(), "用法：/ex company dividend <公司> <0-80>");
+            return 0;
+        }
+        return companyDividend(context, parts[0], parts[1]);
+    }
+
+    private static int companySectorArgs(CommandContext<CommandSourceStack> context) {
+        String[] parts = splitLast(text(context, "args"));
+        if (sectorCode(parts[1]) == null) {
+            Messages.sendFail(context.getSource(), "用法：/ex company sector <公司> <采矿|农业|制造|贸易|服务>");
+            return 0;
+        }
+        return companySector(context, parts[0], parts[1]);
+    }
+
+    private static int companyRaiseArgs(CommandContext<CommandSourceStack> context) {
+        String[] parts = splitLast(text(context, "args"));
+        if (parts[1].isEmpty()) {
+            Messages.sendFail(context.getSource(), "用法：/ex company raise <公司> <金额>");
+            return 0;
+        }
+        return companyRaise(context, parts[0], parts[1]);
+    }
+
 
     // ── 公共上下文 ──
 
