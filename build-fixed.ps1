@@ -1,4 +1,4 @@
-# 本机 Forge 1.20.1 构建脚本（只在 D:\server 这台机器上用，CI 不需要）。
+﻿# 本机 Forge 1.20.1 构建脚本（只在 D:\server 这台机器上用，CI 不需要）。
 #
 # 为什么需要它：DSH 的 Windows 沙箱里，构建 fork 出去的 JVM 的 Files.isWritable()
 # 会恒为 false，导致 ForgeGradle 的 access transformer 步骤（access-transformers

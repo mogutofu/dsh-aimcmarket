@@ -65,6 +65,12 @@ dependencies {
 }
 
 tasks.named('processResources', ProcessResources).configure {
+    // 关键：源文件（mods.toml）和 expand 输出都必须按 UTF-8 读写，
+    // 否则 Windows 默认代码页会把中文描述写成 ???。
+    filteringCharset = 'UTF-8'
+    var modDescriptionZh = 'AIMCmarket 是 Forge 1.20.1 的纯服务端 AI 市场模组：' +
+            '玩家用 /ex 交易、炒股、买基金、存贷款、开公司、IPO、做期货期权，' +
+            '市场先生和政府由本机 DSH 的 AI 接口驱动，记账与定价全部在模组内完成。'
     var replaceProperties = [
             minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
@@ -76,7 +82,7 @@ tasks.named('processResources', ProcessResources).configure {
             mod_license            : mod_license,
             mod_version            : mod_version,
             mod_authors            : mod_authors,
-            mod_description        : mod_description,
+            mod_description        : modDescriptionZh,
     ]
     inputs.properties replaceProperties
 

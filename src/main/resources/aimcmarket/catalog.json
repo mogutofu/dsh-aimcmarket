@@ -1,0 +1,1641 @@
+{
+  "schema": 1,
+  "note": "AIMCmarket 商品目录。basePrice 单位是分（1200 = 12.00 币）；改完 /ex admin reload 生效。",
+  "items": [
+    {
+      "id": "minecraft:iron_ingot",
+      "name_zh": "铁锭",
+      "aliases": [
+        "铁",
+        "iron",
+        "铁锭"
+      ],
+      "basePrice": 1200,
+      "volatility": 0.02,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:gold_ingot",
+      "name_zh": "金锭",
+      "aliases": [
+        "金",
+        "gold",
+        "金子"
+      ],
+      "basePrice": 4000,
+      "volatility": 0.025,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:copper_ingot",
+      "name_zh": "铜锭",
+      "aliases": [
+        "铜",
+        "copper"
+      ],
+      "basePrice": 900,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond",
+      "name_zh": "钻石",
+      "aliases": [
+        "钻",
+        "diamond",
+        "钻石"
+      ],
+      "basePrice": 20000,
+      "volatility": 0.035,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:emerald",
+      "name_zh": "绿宝石",
+      "aliases": [
+        "绿宝石",
+        "emerald"
+      ],
+      "basePrice": 6000,
+      "volatility": 0.03,
+      "liquidity": 7000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:coal",
+      "name_zh": "煤炭",
+      "aliases": [
+        "煤",
+        "coal",
+        "煤炭"
+      ],
+      "basePrice": 300,
+      "volatility": 0.025,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:charcoal",
+      "name_zh": "木炭",
+      "aliases": [
+        "碳",
+        "charcoal",
+        "木炭"
+      ],
+      "basePrice": 200,
+      "volatility": 0.025,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:raw_iron",
+      "name_zh": "粗铁",
+      "aliases": [
+        "铁矿石",
+        "raw iron",
+        "粗铁"
+      ],
+      "basePrice": 800,
+      "volatility": 0.025,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:raw_gold",
+      "name_zh": "粗金",
+      "aliases": [
+        "金矿石",
+        "raw gold",
+        "粗金"
+      ],
+      "basePrice": 3000,
+      "volatility": 0.03,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:raw_copper",
+      "name_zh": "粗铜",
+      "aliases": [
+        "铜矿石",
+        "raw copper",
+        "粗铜"
+      ],
+      "basePrice": 600,
+      "volatility": 0.025,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:redstone",
+      "name_zh": "红石",
+      "aliases": [
+        "红石",
+        "redstone"
+      ],
+      "basePrice": 400,
+      "volatility": 0.03,
+      "liquidity": 15000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:lapis_lazuli",
+      "name_zh": "青金石",
+      "aliases": [
+        "青金石",
+        "lapis"
+      ],
+      "basePrice": 800,
+      "volatility": 0.03,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:quartz",
+      "name_zh": "下界石英",
+      "aliases": [
+        "石英",
+        "quartz"
+      ],
+      "basePrice": 500,
+      "volatility": 0.028,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:amethyst_shard",
+      "name_zh": "紫水晶碎片",
+      "aliases": [
+        "紫水晶",
+        "amethyst"
+      ],
+      "basePrice": 1200,
+      "volatility": 0.035,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:netherite_scrap",
+      "name_zh": "远古残骸碎片",
+      "aliases": [
+        "残骸",
+        "下界合金碎片",
+        "netherite scrap"
+      ],
+      "basePrice": 15000,
+      "volatility": 0.04,
+      "liquidity": 3000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:netherite_ingot",
+      "name_zh": "下界合金锭",
+      "aliases": [
+        "下界合金",
+        "netherite"
+      ],
+      "basePrice": 90000,
+      "volatility": 0.045,
+      "liquidity": 2000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:emerald_block",
+      "name_zh": "绿宝石块",
+      "aliases": [
+        "绿宝石块",
+        "emerald block"
+      ],
+      "basePrice": 54000,
+      "volatility": 0.03,
+      "liquidity": 3000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_block",
+      "name_zh": "钻石块",
+      "aliases": [
+        "钻石块",
+        "diamond block"
+      ],
+      "basePrice": 180000,
+      "volatility": 0.035,
+      "liquidity": 2000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_block",
+      "name_zh": "铁块",
+      "aliases": [
+        "铁块",
+        "iron block"
+      ],
+      "basePrice": 10800,
+      "volatility": 0.02,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:gold_block",
+      "name_zh": "金块",
+      "aliases": [
+        "金块",
+        "gold block"
+      ],
+      "basePrice": 36000,
+      "volatility": 0.025,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:lapis_block",
+      "name_zh": "青金石块",
+      "aliases": [
+        "青金石块",
+        "lapis block"
+      ],
+      "basePrice": 7200,
+      "volatility": 0.03,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:redstone_block",
+      "name_zh": "红石块",
+      "aliases": [
+        "红石块",
+        "redstone block"
+      ],
+      "basePrice": 3600,
+      "volatility": 0.03,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:coal_block",
+      "name_zh": "煤炭块",
+      "aliases": [
+        "煤炭块",
+        "coal block"
+      ],
+      "basePrice": 2700,
+      "volatility": 0.025,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:quartz_block",
+      "name_zh": "石英块",
+      "aliases": [
+        "石英块",
+        "quartz block"
+      ],
+      "basePrice": 1600,
+      "volatility": 0.028,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:amethyst_block",
+      "name_zh": "紫水晶块",
+      "aliases": [
+        "紫水晶块",
+        "amethyst block"
+      ],
+      "basePrice": 4000,
+      "volatility": 0.035,
+      "liquidity": 3000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:oak_log",
+      "name_zh": "橡木原木",
+      "aliases": [
+        "橡木",
+        "原木",
+        "oak log",
+        "木头"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 22000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:spruce_log",
+      "name_zh": "云杉原木",
+      "aliases": [
+        "云杉",
+        "spruce log"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:birch_log",
+      "name_zh": "白桦原木",
+      "aliases": [
+        "白桦",
+        "birch log"
+      ],
+      "basePrice": 160,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:jungle_log",
+      "name_zh": "丛林木原木",
+      "aliases": [
+        "丛林",
+        "jungle log"
+      ],
+      "basePrice": 180,
+      "volatility": 0.022,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:acacia_log",
+      "name_zh": "金合欢原木",
+      "aliases": [
+        "金合欢",
+        "acacia log"
+      ],
+      "basePrice": 170,
+      "volatility": 0.022,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:dark_oak_log",
+      "name_zh": "深色橡木原木",
+      "aliases": [
+        "深色橡木",
+        "dark oak log"
+      ],
+      "basePrice": 190,
+      "volatility": 0.022,
+      "liquidity": 15000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:oak_planks",
+      "name_zh": "橡木木板",
+      "aliases": [
+        "木板",
+        "planks",
+        "橡木板"
+      ],
+      "basePrice": 80,
+      "volatility": 0.018,
+      "liquidity": 24000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:stone",
+      "name_zh": "石头",
+      "aliases": [
+        "石头",
+        "stone"
+      ],
+      "basePrice": 60,
+      "volatility": 0.015,
+      "liquidity": 30000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cobblestone",
+      "name_zh": "圆石",
+      "aliases": [
+        "圆石",
+        "鹅卵石",
+        "cobblestone"
+      ],
+      "basePrice": 40,
+      "volatility": 0.015,
+      "liquidity": 32000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:sand",
+      "name_zh": "沙子",
+      "aliases": [
+        "沙子",
+        "sand"
+      ],
+      "basePrice": 60,
+      "volatility": 0.018,
+      "liquidity": 26000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:gravel",
+      "name_zh": "沙砾",
+      "aliases": [
+        "沙砾",
+        "gravel"
+      ],
+      "basePrice": 50,
+      "volatility": 0.018,
+      "liquidity": 24000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:glass",
+      "name_zh": "玻璃",
+      "aliases": [
+        "玻璃",
+        "glass"
+      ],
+      "basePrice": 300,
+      "volatility": 0.02,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:obsidian",
+      "name_zh": "黑曜石",
+      "aliases": [
+        "黑曜石",
+        "obsidian"
+      ],
+      "basePrice": 1000,
+      "volatility": 0.025,
+      "liquidity": 8000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:netherrack",
+      "name_zh": "下界岩",
+      "aliases": [
+        "下界岩",
+        "netherrack"
+      ],
+      "basePrice": 80,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:soul_sand",
+      "name_zh": "灵魂沙",
+      "aliases": [
+        "灵魂沙",
+        "soul sand"
+      ],
+      "basePrice": 300,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:glowstone",
+      "name_zh": "荧石",
+      "aliases": [
+        "荧石",
+        "glowstone"
+      ],
+      "basePrice": 700,
+      "volatility": 0.028,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:end_stone",
+      "name_zh": "末地石",
+      "aliases": [
+        "末地石",
+        "end stone"
+      ],
+      "basePrice": 200,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:dirt",
+      "name_zh": "泥土",
+      "aliases": [
+        "泥土",
+        "dirt"
+      ],
+      "basePrice": 20,
+      "volatility": 0.015,
+      "liquidity": 30000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:clay_ball",
+      "name_zh": "黏土球",
+      "aliases": [
+        "黏土",
+        "clay"
+      ],
+      "basePrice": 100,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:brick",
+      "name_zh": "红砖",
+      "aliases": [
+        "红砖",
+        "brick"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:torch",
+      "name_zh": "火把",
+      "aliases": [
+        "火把",
+        "torch"
+      ],
+      "basePrice": 40,
+      "volatility": 0.018,
+      "liquidity": 26000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:chest",
+      "name_zh": "箱子",
+      "aliases": [
+        "箱子",
+        "chest"
+      ],
+      "basePrice": 500,
+      "volatility": 0.02,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:barrel",
+      "name_zh": "木桶",
+      "aliases": [
+        "木桶",
+        "barrel"
+      ],
+      "basePrice": 600,
+      "volatility": 0.02,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:furnace",
+      "name_zh": "熔炉",
+      "aliases": [
+        "熔炉",
+        "furnace"
+      ],
+      "basePrice": 300,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:hopper",
+      "name_zh": "漏斗",
+      "aliases": [
+        "漏斗",
+        "hopper"
+      ],
+      "basePrice": 2500,
+      "volatility": 0.025,
+      "liquidity": 8000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:crafting_table",
+      "name_zh": "工作台",
+      "aliases": [
+        "工作台",
+        "crafting table"
+      ],
+      "basePrice": 200,
+      "volatility": 0.018,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:bookshelf",
+      "name_zh": "书架",
+      "aliases": [
+        "书架",
+        "bookshelf"
+      ],
+      "basePrice": 900,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:scaffolding",
+      "name_zh": "脚手架",
+      "aliases": [
+        "脚手架",
+        "scaffolding"
+      ],
+      "basePrice": 300,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:campfire",
+      "name_zh": "营火",
+      "aliases": [
+        "营火",
+        "campfire"
+      ],
+      "basePrice": 700,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:lantern",
+      "name_zh": "灯笼",
+      "aliases": [
+        "灯笼",
+        "lantern"
+      ],
+      "basePrice": 600,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:redstone_torch",
+      "name_zh": "红石火把",
+      "aliases": [
+        "红石火把",
+        "redstone torch"
+      ],
+      "basePrice": 100,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:rail",
+      "name_zh": "铁轨",
+      "aliases": [
+        "铁轨",
+        "rail"
+      ],
+      "basePrice": 500,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:minecart",
+      "name_zh": "矿车",
+      "aliases": [
+        "矿车",
+        "minecart"
+      ],
+      "basePrice": 1500,
+      "volatility": 0.025,
+      "liquidity": 8000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:tnt",
+      "name_zh": "TNT",
+      "aliases": [
+        "tnt",
+        "炸药"
+      ],
+      "basePrice": 2000,
+      "volatility": 0.03,
+      "liquidity": 7000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:apple",
+      "name_zh": "苹果",
+      "aliases": [
+        "苹果",
+        "apple"
+      ],
+      "basePrice": 300,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:bread",
+      "name_zh": "面包",
+      "aliases": [
+        "面包",
+        "bread"
+      ],
+      "basePrice": 500,
+      "volatility": 0.02,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:wheat",
+      "name_zh": "小麦",
+      "aliases": [
+        "小麦",
+        "wheat"
+      ],
+      "basePrice": 200,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:wheat_seeds",
+      "name_zh": "小麦种子",
+      "aliases": [
+        "种子",
+        "seeds"
+      ],
+      "basePrice": 20,
+      "volatility": 0.02,
+      "liquidity": 24000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:carrot",
+      "name_zh": "胡萝卜",
+      "aliases": [
+        "胡萝卜",
+        "carrot"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:potato",
+      "name_zh": "马铃薯",
+      "aliases": [
+        "土豆",
+        "potato"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:baked_potato",
+      "name_zh": "烤马铃薯",
+      "aliases": [
+        "烤土豆",
+        "baked potato"
+      ],
+      "basePrice": 250,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:beetroot",
+      "name_zh": "甜菜根",
+      "aliases": [
+        "甜菜",
+        "beetroot"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:sugar",
+      "name_zh": "糖",
+      "aliases": [
+        "糖",
+        "sugar"
+      ],
+      "basePrice": 150,
+      "volatility": 0.02,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:sugar_cane",
+      "name_zh": "甘蔗",
+      "aliases": [
+        "甘蔗",
+        "sugar cane"
+      ],
+      "basePrice": 100,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:melon",
+      "name_zh": "西瓜",
+      "aliases": [
+        "西瓜",
+        "melon"
+      ],
+      "basePrice": 200,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:pumpkin",
+      "name_zh": "南瓜",
+      "aliases": [
+        "南瓜",
+        "pumpkin"
+      ],
+      "basePrice": 250,
+      "volatility": 0.02,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:porkchop",
+      "name_zh": "生猪排",
+      "aliases": [
+        "猪排",
+        "猪肉",
+        "porkchop"
+      ],
+      "basePrice": 350,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_porkchop",
+      "name_zh": "熟猪排",
+      "aliases": [
+        "熟猪肉",
+        "cooked porkchop"
+      ],
+      "basePrice": 600,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:beef",
+      "name_zh": "生牛肉",
+      "aliases": [
+        "牛肉",
+        "beef"
+      ],
+      "basePrice": 400,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_beef",
+      "name_zh": "牛排",
+      "aliases": [
+        "牛排",
+        "cooked beef"
+      ],
+      "basePrice": 700,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:chicken",
+      "name_zh": "生鸡肉",
+      "aliases": [
+        "鸡肉",
+        "chicken"
+      ],
+      "basePrice": 300,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_chicken",
+      "name_zh": "熟鸡肉",
+      "aliases": [
+        "熟鸡肉",
+        "cooked chicken"
+      ],
+      "basePrice": 600,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:mutton",
+      "name_zh": "生羊肉",
+      "aliases": [
+        "羊肉",
+        "mutton"
+      ],
+      "basePrice": 400,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_mutton",
+      "name_zh": "熟羊肉",
+      "aliases": [
+        "熟羊肉",
+        "cooked mutton"
+      ],
+      "basePrice": 650,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cod",
+      "name_zh": "生鳕鱼",
+      "aliases": [
+        "鳕鱼",
+        "cod"
+      ],
+      "basePrice": 300,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_cod",
+      "name_zh": "熟鳕鱼",
+      "aliases": [
+        "熟鳕鱼",
+        "cooked cod"
+      ],
+      "basePrice": 500,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:salmon",
+      "name_zh": "生鲑鱼",
+      "aliases": [
+        "鲑鱼",
+        "三文鱼",
+        "salmon"
+      ],
+      "basePrice": 350,
+      "volatility": 0.022,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cooked_salmon",
+      "name_zh": "熟鲑鱼",
+      "aliases": [
+        "熟三文鱼",
+        "cooked salmon"
+      ],
+      "basePrice": 550,
+      "volatility": 0.022,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:egg",
+      "name_zh": "鸡蛋",
+      "aliases": [
+        "鸡蛋",
+        "egg"
+      ],
+      "basePrice": 100,
+      "volatility": 0.02,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:golden_apple",
+      "name_zh": "金苹果",
+      "aliases": [
+        "金苹果",
+        "golden apple"
+      ],
+      "basePrice": 3000,
+      "volatility": 0.035,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:golden_carrot",
+      "name_zh": "金胡萝卜",
+      "aliases": [
+        "金胡萝卜",
+        "golden carrot"
+      ],
+      "basePrice": 1500,
+      "volatility": 0.03,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:cake",
+      "name_zh": "蛋糕",
+      "aliases": [
+        "蛋糕",
+        "cake"
+      ],
+      "basePrice": 800,
+      "volatility": 0.022,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:honeycomb",
+      "name_zh": "蜜脾",
+      "aliases": [
+        "蜜脾",
+        "honeycomb"
+      ],
+      "basePrice": 600,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:feather",
+      "name_zh": "羽毛",
+      "aliases": [
+        "羽毛",
+        "feather"
+      ],
+      "basePrice": 100,
+      "volatility": 0.022,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:leather",
+      "name_zh": "皮革",
+      "aliases": [
+        "皮革",
+        "leather"
+      ],
+      "basePrice": 300,
+      "volatility": 0.022,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:string",
+      "name_zh": "线",
+      "aliases": [
+        "线",
+        "string"
+      ],
+      "basePrice": 120,
+      "volatility": 0.022,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:bone",
+      "name_zh": "骨头",
+      "aliases": [
+        "骨头",
+        "bone"
+      ],
+      "basePrice": 150,
+      "volatility": 0.022,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:gunpowder",
+      "name_zh": "火药",
+      "aliases": [
+        "火药",
+        "gunpowder"
+      ],
+      "basePrice": 250,
+      "volatility": 0.025,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:flint",
+      "name_zh": "燧石",
+      "aliases": [
+        "燧石",
+        "flint"
+      ],
+      "basePrice": 180,
+      "volatility": 0.022,
+      "liquidity": 16000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:slime_ball",
+      "name_zh": "黏液球",
+      "aliases": [
+        "黏液球",
+        "slimeball"
+      ],
+      "basePrice": 250,
+      "volatility": 0.025,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:slime_block",
+      "name_zh": "黏液块",
+      "aliases": [
+        "黏液块",
+        "slime block"
+      ],
+      "basePrice": 1000,
+      "volatility": 0.025,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:spider_eye",
+      "name_zh": "蜘蛛眼",
+      "aliases": [
+        "蜘蛛眼",
+        "spider eye"
+      ],
+      "basePrice": 300,
+      "volatility": 0.025,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:rotten_flesh",
+      "name_zh": "腐肉",
+      "aliases": [
+        "腐肉",
+        "rotten flesh"
+      ],
+      "basePrice": 80,
+      "volatility": 0.02,
+      "liquidity": 24000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:ender_pearl",
+      "name_zh": "末影珍珠",
+      "aliases": [
+        "末影珍珠",
+        "ender pearl"
+      ],
+      "basePrice": 1500,
+      "volatility": 0.03,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:blaze_rod",
+      "name_zh": "烈焰棒",
+      "aliases": [
+        "烈焰棒",
+        "blaze rod"
+      ],
+      "basePrice": 2500,
+      "volatility": 0.032,
+      "liquidity": 7000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:ghast_tear",
+      "name_zh": "恶魂之泪",
+      "aliases": [
+        "恶魂之泪",
+        "ghast tear"
+      ],
+      "basePrice": 3000,
+      "volatility": 0.035,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:magma_cream",
+      "name_zh": "岩浆膏",
+      "aliases": [
+        "岩浆膏",
+        "magma cream"
+      ],
+      "basePrice": 2000,
+      "volatility": 0.032,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:ender_eye",
+      "name_zh": "末影之眼",
+      "aliases": [
+        "末影之眼",
+        "ender eye"
+      ],
+      "basePrice": 4000,
+      "volatility": 0.035,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:shulker_shell",
+      "name_zh": "潜影壳",
+      "aliases": [
+        "潜影壳",
+        "shulker shell"
+      ],
+      "basePrice": 20000,
+      "volatility": 0.04,
+      "liquidity": 2500,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:name_tag",
+      "name_zh": "命名牌",
+      "aliases": [
+        "命名牌",
+        "name tag"
+      ],
+      "basePrice": 2000,
+      "volatility": 0.032,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:saddle",
+      "name_zh": "鞍",
+      "aliases": [
+        "鞍",
+        "saddle"
+      ],
+      "basePrice": 3000,
+      "volatility": 0.03,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:lead",
+      "name_zh": "拴绳",
+      "aliases": [
+        "拴绳",
+        "lead"
+      ],
+      "basePrice": 600,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:compass",
+      "name_zh": "指南针",
+      "aliases": [
+        "指南针",
+        "compass"
+      ],
+      "basePrice": 1500,
+      "volatility": 0.025,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:clock",
+      "name_zh": "钟",
+      "aliases": [
+        "时钟",
+        "clock"
+      ],
+      "basePrice": 1500,
+      "volatility": 0.025,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:map",
+      "name_zh": "地图",
+      "aliases": [
+        "地图",
+        "map"
+      ],
+      "basePrice": 1000,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:book",
+      "name_zh": "书",
+      "aliases": [
+        "书",
+        "book"
+      ],
+      "basePrice": 400,
+      "volatility": 0.02,
+      "liquidity": 14000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:paper",
+      "name_zh": "纸",
+      "aliases": [
+        "纸",
+        "paper"
+      ],
+      "basePrice": 200,
+      "volatility": 0.02,
+      "liquidity": 18000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:shears",
+      "name_zh": "剪刀",
+      "aliases": [
+        "剪刀",
+        "shears"
+      ],
+      "basePrice": 800,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:fishing_rod",
+      "name_zh": "钓鱼竿",
+      "aliases": [
+        "钓鱼竿",
+        "fishing rod"
+      ],
+      "basePrice": 900,
+      "volatility": 0.022,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:firework_rocket",
+      "name_zh": "烟花火箭",
+      "aliases": [
+        "烟花",
+        "firework"
+      ],
+      "basePrice": 300,
+      "volatility": 0.028,
+      "liquidity": 12000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:shield",
+      "name_zh": "盾牌",
+      "aliases": [
+        "盾牌",
+        "shield"
+      ],
+      "basePrice": 2000,
+      "volatility": 0.025,
+      "liquidity": 8000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:bow",
+      "name_zh": "弓",
+      "aliases": [
+        "弓",
+        "bow"
+      ],
+      "basePrice": 1200,
+      "volatility": 0.025,
+      "liquidity": 10000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:arrow",
+      "name_zh": "箭",
+      "aliases": [
+        "箭",
+        "arrow"
+      ],
+      "basePrice": 100,
+      "volatility": 0.02,
+      "liquidity": 20000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_pickaxe",
+      "name_zh": "铁镐",
+      "aliases": [
+        "铁镐",
+        "iron pickaxe"
+      ],
+      "basePrice": 2500,
+      "volatility": 0.025,
+      "liquidity": 8000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_sword",
+      "name_zh": "铁剑",
+      "aliases": [
+        "铁剑",
+        "iron sword"
+      ],
+      "basePrice": 2000,
+      "volatility": 0.025,
+      "liquidity": 9000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_helmet",
+      "name_zh": "铁头盔",
+      "aliases": [
+        "铁头盔",
+        "iron helmet"
+      ],
+      "basePrice": 3000,
+      "volatility": 0.025,
+      "liquidity": 7000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_chestplate",
+      "name_zh": "铁胸甲",
+      "aliases": [
+        "铁胸甲",
+        "iron chestplate"
+      ],
+      "basePrice": 4500,
+      "volatility": 0.025,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_leggings",
+      "name_zh": "铁护腿",
+      "aliases": [
+        "铁护腿",
+        "iron leggings"
+      ],
+      "basePrice": 4000,
+      "volatility": 0.025,
+      "liquidity": 6000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:iron_boots",
+      "name_zh": "铁靴子",
+      "aliases": [
+        "铁靴子",
+        "iron boots"
+      ],
+      "basePrice": 2500,
+      "volatility": 0.025,
+      "liquidity": 7000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_sword",
+      "name_zh": "钻石剑",
+      "aliases": [
+        "钻石剑",
+        "diamond sword"
+      ],
+      "basePrice": 6000,
+      "volatility": 0.03,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_pickaxe",
+      "name_zh": "钻石镐",
+      "aliases": [
+        "钻石镐",
+        "diamond pickaxe"
+      ],
+      "basePrice": 7000,
+      "volatility": 0.03,
+      "liquidity": 5000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_helmet",
+      "name_zh": "钻石头盔",
+      "aliases": [
+        "钻石头盔",
+        "diamond helmet"
+      ],
+      "basePrice": 15000,
+      "volatility": 0.03,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_chestplate",
+      "name_zh": "钻石胸甲",
+      "aliases": [
+        "钻石胸甲",
+        "diamond chestplate"
+      ],
+      "basePrice": 20000,
+      "volatility": 0.032,
+      "liquidity": 3500,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_leggings",
+      "name_zh": "钻石护腿",
+      "aliases": [
+        "钻石护腿",
+        "diamond leggings"
+      ],
+      "basePrice": 18000,
+      "volatility": 0.032,
+      "liquidity": 3500,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:diamond_boots",
+      "name_zh": "钻石靴子",
+      "aliases": [
+        "钻石靴子",
+        "diamond boots"
+      ],
+      "basePrice": 14000,
+      "volatility": 0.03,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:enchanting_table",
+      "name_zh": "附魔台",
+      "aliases": [
+        "附魔台",
+        "enchanting table"
+      ],
+      "basePrice": 8000,
+      "volatility": 0.03,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:anvil",
+      "name_zh": "铁砧",
+      "aliases": [
+        "铁砧",
+        "anvil"
+      ],
+      "basePrice": 9000,
+      "volatility": 0.028,
+      "liquidity": 4000,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:beacon",
+      "name_zh": "信标",
+      "aliases": [
+        "信标",
+        "beacon"
+      ],
+      "basePrice": 50000,
+      "volatility": 0.04,
+      "liquidity": 1500,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:conduit",
+      "name_zh": "潮涌核心",
+      "aliases": [
+        "潮涌核心",
+        "conduit"
+      ],
+      "basePrice": 30000,
+      "volatility": 0.038,
+      "liquidity": 1800,
+      "enabled": true
+    },
+    {
+      "id": "minecraft:ender_chest",
+      "name_zh": "末影箱",
+      "aliases": [
+        "末影箱",
+        "ender chest"
+      ],
+      "basePrice": 12000,
+      "volatility": 0.032,
+      "liquidity": 3000,
+      "enabled": true
+    }
+  ]
+}
