@@ -189,20 +189,42 @@ public final class AimcmarketMod {
     }
 
     /**
-     * 服务器启动后再注册一遍命令树。
+     * 服务器启动后重建我们的命令根节点。
      *
-     * <p>有些模组（WorldEdit 系）会把自己的命令别名塞进 /ex，而 Brigadier 后注册的会覆盖先注册的。
-     * 这里在 ServerStarted 时再注册一次，确保 /ex 根命令一定是 AIMCmarket 的；
-     * 失败也不影响服务器（只记一条 warn）。</p>
+     * <p>有些模组（WorldEdit 系）会把 `/ex` 注册成自己的命令别名，而 Brigadier 对同名根节点是
+     * "合并子节点"的，结果 `/ex` 里混进了别人的参数（例如 `[radius]`），
+     * 中文自然语言输入会被别人的整数参数抢先解析报错。这里在 ServerStarted 时直接把
+     * `/ex`、`/exchange`、`/market` 三个根节点从 dispatcher 里摘掉再重新注册，保证干净。</p>
      */
     private void onServerStarted(net.minecraftforge.event.server.ServerStartedEvent event) {
         try {
             var dispatcher = event.getServer().getCommands().getDispatcher();
+            for (String rootName : new String[]{"ex", "exchange", "market"}) {
+                removeRootChild(dispatcher, rootName);
+            }
             MarketCommand.register(dispatcher);
             AdminCommand.register(dispatcher);
-            LOGGER.info("AIMCmarket 命令已在服务器启动后刷新（/ex 根命令归市场）");
+            LOGGER.info("AIMCmarket 命令已重建（/ex 根命令归市场）");
         } catch (RuntimeException error) {
-            LOGGER.warn("AIMCmarket 启动后刷新命令失败（不影响正常使用）：{}", error.getMessage());
+            LOGGER.warn("AIMCmarket 启动后重建命令失败（不影响正常使用）：{}", error.getMessage());
+        }
+    }
+
+    /** 用反射把 dispatcher 根节点下的某个子命令摘掉（Brigadier 没有公开的 remove 接口）。 */
+    private static void removeRootChild(com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher,
+                                        String name) {
+        try {
+            var root = dispatcher.getRoot();
+            for (String fieldName : new String[]{"children", "literals", "arguments"}) {
+                java.lang.reflect.Field field = com.mojang.brigadier.tree.CommandNode.class.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object value = field.get(root);
+                if (value instanceof java.util.Map<?, ?> map) {
+                    map.remove(name);
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            LOGGER.warn("摘除冲突命令 /{} 失败：{}", name, error.getMessage());
         }
     }
 

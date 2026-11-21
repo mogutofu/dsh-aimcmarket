@@ -46,16 +46,16 @@ public final class AdminCommand {
         LiteralArgumentBuilder<CommandSourceStack> admin = Commands.literal("admin")
                 .requires(source -> source.hasPermission(2));
         admin.then(Commands.literal("setprice")
-                .then(Commands.argument("item", StringArgumentType.string()).suggests(itemNames())
-                        .then(Commands.argument("price", StringArgumentType.word())
+                .then(Commands.argument("item", CnStringArgument.create()).suggests(itemNames())
+                        .then(Commands.argument("price", CnStringArgument.create())
                                 .executes(AdminCommand::setPrice))));
         admin.then(Commands.literal("give")
-                .then(Commands.argument("player", StringArgumentType.word()).suggests(playerNames())
-                        .then(Commands.argument("amount", StringArgumentType.word())
+                .then(Commands.argument("player", CnStringArgument.create()).suggests(playerNames())
+                        .then(Commands.argument("amount", CnStringArgument.create())
                                 .executes(context -> money(context, true)))));
         admin.then(Commands.literal("take")
-                .then(Commands.argument("player", StringArgumentType.word()).suggests(playerNames())
-                        .then(Commands.argument("amount", StringArgumentType.word())
+                .then(Commands.argument("player", CnStringArgument.create()).suggests(playerNames())
+                        .then(Commands.argument("amount", CnStringArgument.create())
                                 .executes(context -> money(context, false)))));
         admin.then(Commands.literal("freeze")
                 .then(Commands.argument("frozen", BoolArgumentType.bool())
@@ -66,8 +66,8 @@ public final class AdminCommand {
         admin.then(Commands.literal("selftest").executes(AdminCommand::selfTest));
         admin.then(Commands.literal("gov")
                 .then(Commands.literal("set")
-                        .then(Commands.argument("field", StringArgumentType.word()).suggests(govFields())
-                                .then(Commands.argument("value", StringArgumentType.word())
+                        .then(Commands.argument("field", CnStringArgument.create()).suggests(govFields())
+                                .then(Commands.argument("value", CnStringArgument.create())
                                         .executes(AdminCommand::govSet)))));
         return admin;
     }
