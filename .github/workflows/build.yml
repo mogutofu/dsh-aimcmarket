@@ -1,0 +1,129 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runServer:
+        description: '额外跑一次 runServer 冒烟测试（RCON 执行 /ex admin selftest、/ex board 等）'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉代码
+        uses: actions/checkout@v4
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 缓存/准备 Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.1.1'
+
+      - name: 构建 + 单测
+        run: gradle build --no-daemon --console=plain
+
+      - name: 校验 jar 元数据
+        run: |
+          set -e
+          jar=$(ls build/libs/aimcmarket-forge-1_20_1-*.jar | head -n1)
+          echo "jar: $jar"
+          unzip -p "$jar" META-INF/mods.toml > /tmp/mods.toml
+          cat /tmp/mods.toml
+          grep -q 'modId="aimcmarket"' /tmp/mods.toml
+          grep -q 'version="0.1.0"' /tmp/mods.toml
+          grep -q 'displayTest="IGNORE_ALL_VERSION"' /tmp/mods.toml
+          # 纯服务端：不许打进去任何客户端类/客户端包
+          if unzip -l "$jar" | grep -qE 'net/minecraft/client'; then
+            echo '::error::jar 里出现了客户端类'
+            exit 1
+          fi
+          unzip -p "$jar" META-INF/MANIFEST.MF
+
+      - name: 单测报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test-results/test/*.xml
+          if-no-files-found: ignore
+
+      - name: 上传 jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: aimcmarket-jar
+          path: build/libs/aimcmarket-forge-1_20_1-*.jar
+
+  run-server-smoke:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.runServer == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: 拉代码
+        uses: actions/checkout@v4
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 准备 Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.1.1'
+
+      - name: 准备 runServer 目录
+        run: |
+          mkdir -p run/config
+          echo 'eula=true' > run/eula.txt
+          printf 'online-mode=false\nenable-rcon=true\nrcon.port=25575\nrcon.password=aimcsmoke\n# 冒烟测试要快，市场 tick 调成 1 分钟\n' > run/server.properties
+
+      - name: 启动服务端
+        run: |
+          nohup gradle runServer --no-daemon --console=plain > server-run.log 2>&1 &
+          echo $! > server-run.pid
+          python3 tools/ci_rcon.py wait 25575 aimcsmoke 420
+
+      - name: RCON 执行自检命令
+        run: |
+          set -e
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex admin selftest"
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex board"
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex stock list"
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex gov status"
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex news"
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "ex admin stats"
+
+      - name: 断言日志
+        run: |
+          set -e
+          sleep 3
+          grep -q 'SELFTEST PASS' server-run.log
+          grep -q 'AIMCmarket' server-run.log
+          echo '--- selftest 相关日志 ---'
+          grep -E 'SELFTEST|对账|reconcile' server-run.log || true
+
+      - name: 停服
+        if: always()
+        run: |
+          python3 tools/ci_rcon.py cmd 25575 aimcsmoke "stop" || true
+          sleep 10
+          kill "$(cat server-run.pid)" 2>/dev/null || true
+
+      - name: 服务端日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-run-log
+          path: server-run.log
+          if-no-files-found: ignore
