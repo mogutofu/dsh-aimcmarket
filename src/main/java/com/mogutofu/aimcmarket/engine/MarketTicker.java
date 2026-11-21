@@ -24,6 +24,12 @@ public final class MarketTicker {
         }
     }
 
+    /** 新闻/政策 AI 生成节流：每条最多一小时一次（跨 ticker 实例有效）。 */
+    private static volatile long lastNewsGeneratedMs = 0L;
+    private static volatile long lastPolicyGeneratedMs = 0L;
+    /** 生成间隔：1 小时。 */
+    private static final long NEWS_POLICY_INTERVAL_MS = 3_600_000L;
+
     private long lastDay = Long.MIN_VALUE;
     private long lastIndexCentiPoints = -1L;
     private long lastNoticesFlushMs = 0L;
@@ -143,6 +149,13 @@ public final class MarketTicker {
         if (ctx == null || !NewsEngine.dueForNews(ctx, nowMs)) {
             return;
         }
+        // 没人在线不生成（省 token），且每小时最多一条
+        if (ctx.onlineAccounts == null || ctx.onlineAccounts.isEmpty()) {
+            return;
+        }
+        if (nowMs - lastNewsGeneratedMs < NEWS_POLICY_INTERVAL_MS) {
+            return;
+        }
         if (ctx.newsInFlight) {
             return;
         }
@@ -150,6 +163,7 @@ public final class MarketTicker {
         AimcContext.AiSubmitter submitter = ctx.aiSubmitter;
         JsonObject context = NewsEngine.buildNewsContext(ctx);
         if (ai == null || submitter == null) {
+            lastNewsGeneratedMs = nowMs;
             String headline = NewsEngine.generateLocalNews(ctx);
             if (headline != null && !headline.isBlank() && ctx.broadcaster != null) {
                 ctx.broadcaster.broadcast("市场新闻：" + headline, false);
@@ -157,6 +171,7 @@ public final class MarketTicker {
             return;
         }
         ctx.newsInFlight = true;
+        lastNewsGeneratedMs = nowMs;
         submitter.submit("news", () -> ai.news(context), data -> {
             try {
                 if (data != null) {
@@ -184,9 +199,17 @@ public final class MarketTicker {
         if (ctx == null || !ctx.settings.aiGovernmentEnabled || ctx.govInFlight) {
             return;
         }
+        // 没人在线不生成（省 token），且每小时最多一次
+        if (ctx.onlineAccounts == null || ctx.onlineAccounts.isEmpty()) {
+            return;
+        }
+        if (nowMs - lastPolicyGeneratedMs < NEWS_POLICY_INTERVAL_MS) {
+            return;
+        }
         if (!GovernmentEngine.shouldAskAi(ctx, nowMs)) {
             return;
         }
+        lastPolicyGeneratedMs = nowMs;
         GovernmentEngine.markChecked(ctx, nowMs);
         JsonObject request = GovernmentEngine.buildRequest(ctx);
         AiGateway ai = ctx.settings.aiEnabled ? ctx.ai : null;
