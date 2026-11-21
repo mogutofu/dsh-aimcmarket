@@ -99,6 +99,31 @@ class PersistenceTest {
     }
 
     @Test
+    void dynamicCatalogItemSurvivesReloadAndCanBeTraded() {
+        AimcContext ctx = load();
+        Account account = ctx.accounts.getOrCreate(TEST_UUID, "Tester", NOW_MS,
+                ctx.settings.startingBalanceCents, true);
+        ctx.ledger.issue(account, 1_000_000L, "test.fund", "Tester", "测试注资");
+        // 模拟 AI 估价后自动上市：齿轮（目录原本没有）
+        com.mogutofu.aimcmarket.data.MarketStore.CatalogItem item = ctx.market.addItem(
+                "create:cogwheel", "齿轮", java.util.List.of("cogwheel"), 150L, 0.05, 12_000L);
+        assertNotNull(item, "新商品应该创建成功");
+        assertTrue(ctx.market.hasItem("create:cogwheel"), "目录里应有新商品");
+        long balance = account.balanceCents();
+        assertTrue(com.mogutofu.aimcmarket.engine.TradeService.buy(ctx, account, "create:cogwheel", 64).ok,
+                "动态上市的商品应该能买");
+        assertTrue(account.balanceCents() < balance, "买入后应扣钱");
+        assertTrue(ctx.market.price("create:cogwheel") > 0L, "动态商品应有价格");
+        ctx.saveAll();
+
+        AimcContext reloaded = AimcContext.load(tempDir, tempDir.resolve("config"),
+                MarketSettings.defaults(), NOW_MS + 5_000L, 7L);
+        assertTrue(reloaded.market.hasItem("create:cogwheel"), "重启后动态商品应还在目录里");
+        assertEquals(150L, reloaded.market.item("create:cogwheel").basePriceCents, "重启后基准价应一致");
+        assertTrue(reloaded.ledger.isBalanced(), "动态商品交易后账本应平衡");
+    }
+
+    @Test
     void corruptAccountsFileLoadsAsEmptyInsteadOfCrashing() throws Exception {
         Path dataDir = tempDir.resolve("world").resolve("aimcmarket");
         Files.createDirectories(dataDir);

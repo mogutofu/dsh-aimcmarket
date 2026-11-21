@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mogutofu.aimcmarket.config.MarketSettings;
 import com.mogutofu.aimcmarket.data.MarketStore;
+import com.mogutofu.aimcmarket.util.Cents;
 import com.mogutofu.aimcmarket.util.JsonFile;
 import com.mogutofu.aimcmarket.util.Log;
 
@@ -218,6 +219,57 @@ public final class MarketAi implements AiGateway {
                 + "要求：直接用中文口语回答，120 字以内；不要 markdown、不要输出 JSON、不要解释你是 AI；"
                 + "只根据上面的数据回答，不要编造不存在的股票或物品；"
                 + "如果玩家想买卖/转账/开公司等，告诉他用对应的 /ex 命令，例如 /ex stock buy BLK 10、/ex buy 铁锭 3。";
+    }
+
+    /**
+     * 给"目录里还没有的物品"估一个入市基准价（分）。失败返回 -1，调用方用本地启发式兜底。
+     *
+     * <p>只读操作：AI 只给一个数字，价格最终由模组写进目录并开始跟价格引擎波动。</p>
+     */
+    public long estimatePriceCents(String itemId, String displayName, JsonObject context) {
+        try {
+            if (offline()) {
+                return -1L;
+            }
+            if ("exchange".equals(mode())) {
+                return -1L;
+            }
+            String url = buildUrl(settings.aiLegacyPath);
+            if (url == null || !reserveBudget()) {
+                return -1L;
+            }
+            JsonObject request = new JsonObject();
+            request.addProperty("player", IDENTITY_PLAYER);
+            request.addProperty("uuid", IDENTITY_UUID);
+            request.addProperty("text", "你是 Minecraft 经济服务器 AIMCmarket 的市场先生。请给物品 " + itemId
+                    + "（" + displayName + "）在当前服务器市场估一个合理单价（币/个）。\n"
+                    + "参考信息（JSON）：" + contextText(context) + "\n"
+                    + "只输出一个 JSON 对象：{\"priceCents\": 整数}，单位是分（1 币 = 100 分），"
+                    + "价格范围 100～2000000 分，不要解释、不要 markdown。");
+            long started = System.currentTimeMillis();
+            HttpResponse response = post(url, request.toString(), Math.max(timeoutMs(), 20_000));
+            long elapsed = System.currentTimeMillis() - started;
+            if (response.status != 200) {
+                return -1L;
+            }
+            JsonObject root = parseObject(response.body);
+            if (root == null || !JsonFile.bool(root, "ok", false)) {
+                return -1L;
+            }
+            String reply = JsonFile.str(root, "reply", "");
+            JsonObject data = AiJson.parseLooseObject(reply);
+            if (data == null || !data.has("priceCents")) {
+                Log.warn("[AI] 估价回复里没有 priceCents：" + (reply.length() > 120 ? reply.substring(0, 120) : reply));
+                return -1L;
+            }
+            long cents = data.get("priceCents").getAsLong();
+            cents = Cents.clamp(cents, 100L, 2_000_000L);
+            Log.info("[AI] 估价 " + itemId + " = " + Cents.format(cents) + " 币 用时=" + elapsed + "ms");
+            return cents;
+        } catch (IOException | RuntimeException error) {
+            Log.warn("[AI] 估价失败：" + describe(error));
+            return -1L;
+        }
     }
 
     @Override

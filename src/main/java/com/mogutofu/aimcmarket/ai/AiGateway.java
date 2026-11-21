@@ -32,6 +32,14 @@ public interface AiGateway {
      */
     String chat(String playerName, String text, JsonObject context);
 
+    /**
+     * 给目录里还没有的物品估一个入市基准价（分）；拿不到返回 -1，调用方用本地启发式兜底。
+     * 只返回一个数字，价格最终由模组写进目录。
+     */
+    default long estimatePriceCents(String itemId, String displayName, JsonObject context) {
+        return -1L;
+    }
+
     /** ping 一下，看接口是否可用（用于 /ex admin stats 显示链路状态）。 */
     boolean ping();
 

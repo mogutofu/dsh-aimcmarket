@@ -248,6 +248,85 @@ public final class MarketStore {
         }
     }
 
+    /** 目录里有没有这个 id。 */
+    public boolean hasItem(String id) {
+        return id != null && catalog.containsKey(id.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * 新增一个商品（AI 定价后自动上市用）。价格从 basePrice 开始，之后跟着价格引擎波动。
+     *
+     * <p>会写回 {@code config/aimcmarket/catalog.json}，重启后仍然在目录里。</p>
+     */
+    public CatalogItem addItem(String id, String nameZh, List<String> aliases, long basePriceCents,
+                               double volatility, long liquidity) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("商品 id 不能为空");
+        }
+        String normalized = id.trim().toLowerCase(Locale.ROOT);
+        CatalogItem existing = catalog.get(normalized);
+        if (existing != null) {
+            return existing;
+        }
+        List<String> aliasList = new ArrayList<>();
+        if (aliases != null) {
+            for (String alias : aliases) {
+                if (alias != null && !alias.isBlank()) {
+                    aliasList.add(alias.trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        if (nameZh != null && !nameZh.isBlank()) {
+            aliasList.add(nameZh.trim().toLowerCase(Locale.ROOT));
+        }
+        CatalogItem item = new CatalogItem(
+                normalized,
+                nameZh == null ? normalized : nameZh.trim(),
+                aliasList,
+                Math.max(1L, basePriceCents),
+                Cents.clampDouble(volatility, 0.01, 0.10),
+                Math.max(1000L, liquidity),
+                true);
+        catalog.put(normalized, item);
+        prices.put(normalized, item.basePriceCents);
+        persistCatalog();
+        Log.info("新商品上市：" + item.nameZh + "（" + item.id + "）基准价 "
+                + Cents.format(item.basePriceCents) + " 币");
+        return item;
+    }
+
+    /** 把当前目录写回 catalog.json（保留原有字段格式）。 */
+    private void persistCatalog() {
+        JsonObject root = new JsonObject();
+        root.addProperty("schema", 1);
+        root.addProperty("note", "AIMCmarket 商品目录。basePrice 单位是分（1200 = 12.00 币）；改完 /ex admin reload 生效。");
+        JsonArray array = new JsonArray();
+        for (CatalogItem item : catalog.values()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("id", item.id);
+            one.addProperty("name_zh", item.nameZh);
+            JsonArray aliases = new JsonArray();
+            for (String alias : item.aliases) {
+                if (item.nameZh != null && alias.equals(item.nameZh.toLowerCase(Locale.ROOT))) {
+                    continue;
+                }
+                aliases.add(alias);
+            }
+            one.add("aliases", aliases);
+            one.addProperty("basePrice", item.basePriceCents);
+            one.addProperty("volatility", item.volatility);
+            one.addProperty("liquidity", item.liquidity);
+            one.addProperty("enabled", item.enabled);
+            array.add(one);
+        }
+        root.add("items", array);
+        try {
+            JsonFile.write(catalogFile, root);
+        } catch (IOException error) {
+            Log.warn("写回 catalog.json 失败（下个 tick 重试）", error);
+        }
+    }
+
     public void save() {
         JsonObject root = new JsonObject();
         root.addProperty("schema", 1);

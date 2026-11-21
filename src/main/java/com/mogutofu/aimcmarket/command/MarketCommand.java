@@ -322,16 +322,31 @@ public final class MarketCommand {
             count = 1;
         }
         MarketStore.CatalogItem item = ctx().market.resolve(itemText);
-        if (item == null) {
-            Messages.sendFail(source, (buying ? "目录里没有这个物品：" : "目录不收这个物品：") + itemText + "（/ex board 看目录）");
-            return 0;
+        if (item != null) {
+            performBuySell(source, account, item, count, buying);
+            return Command.SINGLE_SUCCESS;
+        }
+        // 目录里没有：先看是不是已注册的物品（含模组物品），是就让 AI 定价后上市再成交
+        ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** 真正执行买/卖（目录里有没有都走这里）。 */
+    private static void performBuySell(CommandSourceStack source, Account account, MarketStore.CatalogItem item,
+                                       int count, boolean buying) {
+        if (account == null || item == null) {
+            return;
         }
         ServerPlayer mcPlayer = source.getPlayer();
+        if (mcPlayer == null) {
+            Messages.sendFail(source, "你已经下线了，交易取消");
+            return;
+        }
         if (buying) {
             ActionResult result = TradeService.buy(ctx(), account, item.id, count);
             if (!result.ok) {
                 send(source, result);
-                return 0;
+                return;
             }
             int left = giveItem(mcPlayer, item.id, count);
             if (left > 0) {
@@ -339,22 +354,21 @@ public final class MarketCommand {
             }
             send(source, result);
             tickGovernment(source);
-            return Command.SINGLE_SUCCESS;
+            return;
         }
         int have = countItem(mcPlayer, item.id);
         if (have < count) {
             Messages.sendFail(source, "背包里只有 " + have + " 个 " + item.nameZh);
-            return 0;
+            return;
         }
         ActionResult result = TradeService.sell(ctx(), account, item.id, count);
         if (!result.ok) {
             send(source, result);
-            return 0;
+            return;
         }
         removeItem(mcPlayer, item.id, count);
         send(source, result);
         tickGovernment(source);
-        return Command.SINGLE_SUCCESS;
     }
 
     private static int priceArgs(CommandContext<CommandSourceStack> context) {
@@ -364,17 +378,108 @@ public final class MarketCommand {
         }
         String itemText = text(context, "item");
         MarketStore.CatalogItem item = ctx().market.resolve(itemText);
-        if (item == null) {
-            Messages.sendFail(source, "目录里没有这个物品：" + itemText);
-            return 0;
+        if (item != null) {
+            performPrice(source, item);
+            return Command.SINGLE_SUCCESS;
         }
+        ensureCatalogItem(source, itemText, created -> performPrice(source, created));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void performPrice(CommandSourceStack source, MarketStore.CatalogItem item) {
         long price = ctx().market.price(item.id);
         Messages.send(source, item.nameZh + "（" + item.id + "）现价 " + Messages.money(price)
                 + "｜买价 " + Messages.money(TradeService.effectiveAskCents(ctx(), item.id))
                 + "｜回收价 " + Messages.money(TradeService.effectiveBidCents(ctx(), item.id)));
         Messages.sendInfo(source, "基准价 " + Messages.money(item.basePriceCents)
                 + "｜波动 " + Messages.percent(item.volatility) + "｜流动性 " + Messages.money(item.liquidity));
-        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * 目录里没有的已注册物品：AI 先估一个合理价，写进 catalog.json（之后跟着价格引擎波动），
+     * 再执行玩家原本的动作（买/卖/查价）。AI 不可用就用本地启发式估价。
+     */
+    private static void ensureCatalogItem(CommandSourceStack source, String itemText,
+                                          java.util.function.Consumer<MarketStore.CatalogItem> action) {
+        AimcContext ctx = ctx();
+        if (ctx == null) {
+            return;
+        }
+        ItemResolver.Found found = ItemResolver.resolve(itemText);
+        if (found == null) {
+            String hint = ItemResolver.isReady() ? "" : "（物品索引还在构建，几秒后再试一次）";
+            Messages.sendFail(source, "市场里找不到这个物品：" + itemText + hint);
+            return;
+        }
+        Messages.sendInfo(source, "目录里没有「" + found.displayName() + "」，市场先生正在给它定价…");
+        if (ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null) {
+            JsonObject priceContext = buildPriceContext(found);
+            ctx.aiSubmitter.submit("price", () -> {
+                long cents = ctx.ai.estimatePriceCents(found.id, found.displayName(), priceContext);
+                JsonObject wrapper = new JsonObject();
+                wrapper.addProperty("priceCents", cents);
+                return wrapper;
+            }, data -> {
+                long cents = data != null && data.has("priceCents") ? data.get("priceCents").getAsLong() : -1L;
+                if (cents <= 0L) {
+                    cents = heuristicPrice(found);
+                }
+                AimcContext current = ctx();
+                if (current == null) {
+                    return;
+                }
+                MarketStore.CatalogItem item = current.market.hasItem(found.id)
+                        ? current.market.item(found.id)
+                        : current.market.addItem(found.id, found.displayName(), new java.util.ArrayList<>(
+                                java.util.Collections.singletonList(found.nameEn == null ? "" : found.nameEn)),
+                        cents, 0.05, 12_000L);
+                action.accept(item);
+            });
+            return;
+        }
+        long cents = heuristicPrice(found);
+        MarketStore.CatalogItem item = ctx.market.hasItem(found.id)
+                ? ctx.market.item(found.id)
+                : ctx.market.addItem(found.id, found.displayName(), new java.util.ArrayList<>(
+                        java.util.Collections.singletonList(found.nameEn == null ? "" : found.nameEn)),
+                cents, 0.05, 12_000L);
+        action.accept(item);
+    }
+
+    /** AI 不可用时的本地估价：按稀有度/堆叠数估一个量级。 */
+    private static long heuristicPrice(ItemResolver.Found found) {
+        int stack = Math.max(1, ItemResolver.maxStackSize(found.id));
+        int rarity = Math.max(0, ItemResolver.rarity(found.id));
+        double stackFactor = Math.max(1.0, 64.0 / stack);
+        long cents = Math.round(100.0 * stackFactor * (1.0 + rarity * 1.2));
+        return Cents.clamp(cents, 100L, 500_000L);
+    }
+
+    /** 给 AI 估价的上下文：物品本身 + 几个参考价，避免离谱定价。 */
+    private static JsonObject buildPriceContext(ItemResolver.Found found) {
+        JsonObject context = new JsonObject();
+        JsonObject item = new JsonObject();
+        item.addProperty("id", found.id);
+        item.addProperty("name", found.displayName());
+        item.addProperty("maxStackSize", ItemResolver.maxStackSize(found.id));
+        item.addProperty("rarity", ItemResolver.rarity(found.id));
+        context.add("item", item);
+        JsonArray reference = new JsonArray();
+        String[] ids = {"minecraft:iron_ingot", "minecraft:gold_ingot", "minecraft:diamond",
+                "minecraft:oak_log", "minecraft:chest"};
+        for (String id : ids) {
+            MarketStore.CatalogItem catalogItem = ctx().market.item(id);
+            if (catalogItem == null) {
+                continue;
+            }
+            JsonObject one = new JsonObject();
+            one.addProperty("id", id);
+            one.addProperty("name", catalogItem.nameZh);
+            one.addProperty("priceCents", ctx().market.price(id));
+            reference.add(one);
+        }
+        context.add("reference", reference);
+        return context;
     }
 
     private static int companyCreateArgs(CommandContext<CommandSourceStack> context) {
@@ -815,7 +920,11 @@ public final class MarketCommand {
             executeParsed(source, account, local);
             return Command.SINGLE_SUCCESS;
         }
-        // 2) 问答类（"帮我看看XX股票"）直接问 AI，不先走严格 JSON 解析
+        // 2) "我要买64个齿轮"：本地解析不认识的物品，也按 数量+物品 结构直接走上市/成交
+        if (!forceAi && tryLocalTradeText(source, account, text)) {
+            return Command.SINGLE_SUCCESS;
+        }
+        // 3) 问答类（"帮我看看XX股票"）直接问 AI，不先走严格 JSON 解析
         if (!aiReady) {
             String answer = localQueryAnswer(account, text);
             if (answer != null) {
@@ -854,6 +963,66 @@ public final class MarketCommand {
                 });
         return Command.SINGLE_SUCCESS;
     }
+
+    /** 从"我要买64个齿轮"里抠出 买卖方向 / 数量 / 物品文本；抠不出返回 null。 */
+    private static String[] parseTradeText(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String t = text.trim();
+        boolean buying = t.contains("买") || t.contains("收") || t.contains("订购") || t.contains("来点");
+        boolean selling = t.contains("卖") || t.contains("出售") || t.contains("回收");
+        if (!buying && !selling) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("([0-9]+)\\s*(?:个|件|组|块|张|根|份|只|把|台|颗|枚)?\\s*([^0-9，,。;；]+)")
+                .matcher(t);
+        if (!matcher.find()) {
+            return null;
+        }
+        String countText = matcher.group(1);
+        String itemText = matcher.group(2) == null ? "" : matcher.group(2).trim();
+        // 去掉残留的动词/语气词
+        for (String noise : new String[]{"我要", "我想", "帮我", "给我", "购买", "买", "卖", "出售", "收", "个", "的", "吧", "啊", "呗", "呢", "。", "，", "?"}) {
+            itemText = itemText.replace(noise, "");
+        }
+        itemText = itemText.trim();
+        if (itemText.isEmpty()) {
+            return null;
+        }
+        try {
+            int count = Integer.parseInt(countText);
+            if (count < 1 || count > 576) {
+                return null;
+            }
+            return new String[]{buying && !selling ? "buy" : "sell", String.valueOf(count), itemText};
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
+    /** 处理"我要买64个齿轮"这类句式：目录没有的物品按需上市（AI 定价）后直接成交。 */
+    private static boolean tryLocalTradeText(CommandSourceStack source, Account account, String text) {
+        String[] parsed = parseTradeText(text);
+        if (parsed == null) {
+            return false;
+        }
+        boolean buying = "buy".equals(parsed[0]);
+        int count = Integer.parseInt(parsed[1]);
+        String itemText = parsed[2];
+        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
+        if (item != null) {
+            performBuySell(source, account, item, count, buying);
+            return true;
+        }
+        if (ItemResolver.resolve(itemText) == null) {
+            return false;
+        }
+        ensureCatalogItem(source, itemText, created -> performBuySell(source, account, created, count, buying));
+        return true;
+    }
+
 
     /** 像"问题"而不是"命令"的句子：直接走问答，省一次 JSON 解析，也更自然。 */
     private static boolean looksLikeQuery(String text) {

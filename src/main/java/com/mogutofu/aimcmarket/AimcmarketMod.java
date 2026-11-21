@@ -205,6 +205,8 @@ public final class AimcmarketMod {
             MarketCommand.register(dispatcher);
             AdminCommand.register(dispatcher);
             LOGGER.info("AIMCmarket 命令已重建（/ex 根命令归市场）");
+            // 异步扫描 mods/*.jar 的中文语言文件，让 /ex 能按中文名买卖任意模组物品
+            com.mogutofu.aimcmarket.command.ItemResolver.startBuildAsync();
         } catch (RuntimeException error) {
             LOGGER.warn("AIMCmarket 启动后重建命令失败（不影响正常使用）：{}", error.getMessage());
         }
