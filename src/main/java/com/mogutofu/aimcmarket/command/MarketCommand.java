@@ -1588,7 +1588,7 @@ public final class MarketCommand {
     }
 
     /** AI 规划出的"动作类"命令：直接在模组里执行（不走命令系统嵌套，保证结果消息能发到玩家）。 */
-    private static boolean tryExecuteActionDirect(CommandSourceStack source, Account account, String command) {
+    public static boolean tryExecuteActionDirect(CommandSourceStack source, Account account, String command) {
         if (source == null || account == null || command == null) {
             return false;
         }
@@ -1608,6 +1608,32 @@ public final class MarketCommand {
         }
         String root = parts[0].toLowerCase(java.util.Locale.ROOT);
         com.mogutofu.aimcmarket.util.Log.info("[直执行] 玩家=" + account.name + " 命令=" + command);
+        if ("price".equals(root)) {
+            StringBuilder priceText = new StringBuilder();
+            for (int i = 1; i < parts.length; i++) {
+                if (priceText.length() > 0) {
+                    priceText.append(' ');
+                }
+                priceText.append(parts[i]);
+            }
+            String itemName = priceText.toString().trim();
+            if (itemName.isEmpty()) {
+                Messages.sendFail(source, "用法：/ex price <物品>");
+                return true;
+            }
+            MarketStore.CatalogItem priced = ctx.market.resolve(itemName);
+            if (priced != null) {
+                performPrice(source, priced);
+                return true;
+            }
+            if (ItemResolver.resolve(itemName) != null) {
+                // 目录没有：先让 AI 估价上市，再显示价格
+                ensureCatalogItem(source, itemName, created -> performPrice(source, created));
+                return true;
+            }
+            Messages.sendFail(source, "市场里找不到这个物品：" + itemName);
+            return true;
+        }
         if ("buy".equals(root) || "sell".equals(root)) {
             int count = -1;
             int itemEnd = parts.length;

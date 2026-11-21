@@ -32,6 +32,13 @@ public final class DirectCommandRunner {
             return false;
         }
         String root = parts[0].toLowerCase(Locale.ROOT);
+        // 交易类命令优先走 MarketCommand 的直接执行：目录里没有的物品会先让 AI 估价上市（而不是只提示手动添加）
+        if ("buy".equals(root) || "sell".equals(root) || "buyback".equals(root)
+                || "return".equals(root) || "price".equals(root)) {
+            if (MarketCommand.tryExecuteActionDirect(source, account, command)) {
+                return true;
+            }
+        }
         com.mogutofu.aimcmarket.util.Log.info("[内部执行] 玩家=" + (account == null ? "?" : account.name)
                 + " 命令=" + command);
         try {
