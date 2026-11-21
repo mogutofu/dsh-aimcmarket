@@ -29,8 +29,8 @@ public final class MarketSettings {
     // ── 市场 ──
     public int marketTickMinutes = 5;
     public int tradingDayMinutes = 60;
-    public double askSpread = 0.02;
-    public double bidRatio = 0.60;
+    public double askSpread = 0.50;
+    public double bidRatio = 0.12;
     public long maxOrderValueCents = 500_000L; // 5000 币
     public int maxItemPerOrder = 576;
     public double priceTheta = 0.05;

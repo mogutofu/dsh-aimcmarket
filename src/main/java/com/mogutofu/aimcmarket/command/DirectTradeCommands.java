@@ -476,7 +476,8 @@ public final class DirectTradeCommands {
             Messages.sendFail(source, "背包里没有可收购的 " + name);
             return true;
         }
-        long unit = TradeService.displayPriceCents(ctx, item.id);
+        // 收购按回收价（现价 × bidRatio）结算，资源易得时压低收购价
+        long unit = TradeService.effectiveBidCents(ctx, item.id);
         if (unit <= 0L) {
             unit = item.basePriceCents;
         }

@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 物价差调整：买价 = 现价 × 150%（askSpread=0.50），回收/收购价 = 现价 × 12%（bidRatio=0.12），并让「收购」也按回收价结算（资源易得，压低收价、抬高买价）。
 - AI 代执行玩家操作：自然语言先走本地快速查询（基金/持仓/流水/公司/银行/政策/新闻/行情/余额/期货/期权），其余由 AI 生成一条 /ex 命令并以玩家身份执行（白名单不含 admin/其它命令）；新增 /ex buyback（按市价收购背包物品）、/ex company rename（CEO 改名）、/ex company invest/shareholders。
 - 股票自然语言交易：AI 上下文加入全部股票（代码/名字/价格），新增 buy_stock/sell_stock 动作；/ex stock buy|sell|info 也支持中文名（如「宁德时代」）。
 - 现实股票同步：config/aimcmarket/real-stocks.json 配置美股/A股代码，每 5 分钟从腾讯行情接口同步真实价格；现实股票不参与随机波动，游戏内可正常买卖。

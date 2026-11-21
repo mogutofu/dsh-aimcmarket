@@ -674,7 +674,8 @@ public final class MarketCommand {
             Messages.sendFail(source, "背包里没有 " + item.nameZh);
             return;
         }
-        long unit = TradeService.displayPriceCents(ctx(), item.id);
+        // 收购按"回收价"（现价 × bidRatio）走，资源极其容易获取时压低收购价
+        long unit = TradeService.effectiveBidCents(ctx(), item.id);
         if (unit <= 0L) {
             unit = item.basePriceCents;
         }
