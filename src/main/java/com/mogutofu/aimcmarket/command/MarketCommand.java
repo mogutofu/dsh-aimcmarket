@@ -804,22 +804,26 @@ public final class MarketCommand {
         }
         AimcContext ctx = ctx();
         if (text == null || text.isBlank()) {
-            Messages.sendInfo(source, "说点具体的，例如：/ex 买 3 个铁锭");
+            Messages.sendInfo(source, "说点具体的，例如：/ex 买 3 个铁锭，或者 /ex BLK 股票怎么样");
             return 0;
         }
-        if (forceAi && !ctx.settings.aiEnabled) {
-            Messages.sendInfo(source, "AI 已关闭（ai.enabled=false），只能用结构化命令，例如 /ex buy iron_ingot 3");
-            return 0;
-        }
+        boolean aiReady = ctx.settings.aiEnabled && ctx.ai != null && ctx.aiSubmitter != null;
+        // 1) 先走本地解析：确定的买卖/查询意图直接执行
         JsonObject local = LocalParser.parse(text, ctx.market);
         String localIntent = local == null ? "unknown" : local.get("intent").getAsString();
         if (!forceAi && !"unknown".equals(localIntent)) {
             executeParsed(source, account, local);
             return Command.SINGLE_SUCCESS;
         }
-        if (!ctx.settings.aiEnabled || ctx.ai == null || ctx.aiSubmitter == null) {
-            Messages.sendInfo(source, LocalParser.helpHint());
-            return 0;
+        // 2) 问答类（"帮我看看XX股票"）直接问 AI，不先走严格 JSON 解析
+        if (!aiReady) {
+            String answer = localQueryAnswer(account, text);
+            if (answer != null) {
+                Messages.send(source, answer);
+            } else {
+                Messages.sendInfo(source, LocalParser.helpHint());
+            }
+            return Command.SINGLE_SUCCESS;
         }
         long now = System.currentTimeMillis();
         if (now - account.lastAiAtMs < ctx.settings.aiPlayerMinIntervalMs) {
@@ -827,19 +831,214 @@ public final class MarketCommand {
             return 0;
         }
         account.lastAiAtMs = now;
-        String playerName = account.name;
         String uuid = account.uuid;
         Messages.sendInfo(source, "市场先生正在看你的请求…");
+        if (!forceAi && looksLikeQuery(text)) {
+            askChat(uuid, text);
+            return Command.SINGLE_SUCCESS;
+        }
+        // 3) 先试结构化解析（能直接下单/查询就执行），解析不出来再降级到问答
+        String playerName = account.name;
         ctx.aiSubmitter.submit("parse", () -> ctx.ai.parse(playerName, text, buildParseContext(account)),
                 data -> {
                     JsonObject parsed = data == null ? null : AiJson.validateParse(data, ctx.market);
                     if (parsed == null) {
                         parsed = LocalParser.parse(text, ctx.market);
                     }
-                    executeParsedForPlayer(uuid, parsed, text);
+                    String intent = parsed == null || !parsed.has("intent") ? "unknown" : parsed.get("intent").getAsString();
+                    if ("unknown".equals(intent)) {
+                        askChat(uuid, text);
+                    } else {
+                        executeParsedForPlayer(uuid, parsed, text);
+                    }
                 });
         return Command.SINGLE_SUCCESS;
     }
+
+    /** 像"问题"而不是"命令"的句子：直接走问答，省一次 JSON 解析，也更自然。 */
+    private static boolean looksLikeQuery(String text) {
+        String t = text == null ? "" : text;
+        String[] keywords = {"查", "看", "怎么样", "怎样", "如何", "多少", "什么", "哪", "情况", "行情", "介绍",
+                "推荐", "分析", "新闻", "政策", "利率", "余额", "值钱", "涨", "跌", "能不能", "可以买", "好不好"};
+        for (String keyword : keywords) {
+            if (t.contains(keyword)) {
+                return true;
+            }
+        }
+        // 以 ? / ？ / 吗 / 呢 结尾的也算问句
+        String trimmed = t.trim();
+        return trimmed.endsWith("?") || trimmed.endsWith("？") || trimmed.endsWith("吗") || trimmed.endsWith("呢");
+    }
+
+    /** 异步问一次 AI（只读问答），失败用本地规则兜底。 */
+    private static void askChat(String uuid, String text) {
+        AimcContext ctx = ctx();
+        if (ctx == null || ctx.ai == null || ctx.aiSubmitter == null) {
+            return;
+        }
+        Account account = ctx.accounts.get(uuid);
+        if (account == null) {
+            return;
+        }
+        JsonObject chatContext = buildChatContext(account);
+        com.mogutofu.aimcmarket.util.Log.info("[市场问答] 问题：" + text);
+        ctx.aiSubmitter.submit("chat",
+                () -> {
+                    // AiSubmitter 是 JSON 通道，这里把自然语言回复包一层，避免改动公共接口
+                    String reply = ctx.ai.chat(account.name, text, chatContext);
+                    JsonObject wrapper = new JsonObject();
+                    if (reply != null) {
+                        wrapper.addProperty("reply", reply);
+                    }
+                    return wrapper;
+                },
+                data -> {
+                    String rawReply = data == null ? null : data.has("reply") ? data.get("reply").getAsString() : null;
+                    AimcContext current = ctx();
+                    if (current == null) {
+                        return;
+                    }
+                    Account fresh = current.accounts.get(uuid);
+                    if (fresh == null) {
+                        return;
+                    }
+                    String answer = rawReply != null && !rawReply.isBlank()
+                            ? rawReply.trim() : localQueryAnswer(fresh, text);
+                    if (answer == null || answer.isBlank()) {
+                        answer = LocalParser.helpHint();
+                    }
+                    com.mogutofu.aimcmarket.util.Log.info("[市场问答] 回复：" + answer);
+                    var server = com.mogutofu.aimcmarket.AimcmarketMod.server();
+                    if (server != null) {
+                        ServerPlayer player = server.getPlayerList().getPlayer(UUID.fromString(uuid));
+                        if (player != null) {
+                            player.sendSystemMessage(Messages.market(answer));
+                        }
+                    }
+                });
+    }
+
+    /** 给 AI 的只读市场上下文（不包含任何可被 AI 拿来改数据的字段）。 */
+    private static JsonObject buildChatContext(Account account) {
+        AimcContext ctx = ctx();
+        JsonObject context = new JsonObject();
+        context.addProperty("indexPoints", ctx.stocks.indexCentiPoints() / 100.0);
+        context.addProperty("indexChange7d", Math.round(ctx.stocks.indexChange7d(ctx.tradingDay()) * 10000.0) / 10000.0);
+        JsonArray stocks = new JsonArray();
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", stock.code);
+            one.addProperty("name", stock.name);
+            one.addProperty("sector", stock.sector);
+            one.addProperty("priceCents", stock.priceCents);
+            one.addProperty("change", Math.round((stock.priceCents / (double) stock.initialPriceCents - 1.0) * 10000.0) / 10000.0);
+            one.addProperty("outlook", stock.lastOutlook);
+            stocks.add(one);
+        }
+        context.add("stocks", stocks);
+        JsonArray funds = new JsonArray();
+        for (FundStore.Fund fund : ctx.funds.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", fund.code);
+            one.addProperty("name", fund.name);
+            one.addProperty("nav", ctx.funds.formatNav(fund.code));
+            funds.add(one);
+        }
+        context.add("funds", funds);
+        JsonObject player = new JsonObject();
+        player.addProperty("name", account.name);
+        player.addProperty("balanceCents", account.balanceCents());
+        player.addProperty("depositCents", account.bank.totalDepositsCents());
+        player.addProperty("loanCents", account.bank.totalLoanCents());
+        player.addProperty("credit", Math.round(account.creditScore));
+        JsonArray holdings = new JsonArray();
+        for (var entry : account.stocks.entrySet()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", entry.getKey());
+            one.addProperty("shares", entry.getValue().shares);
+            one.addProperty("priceCents", ctx.stocks.priceOf(entry.getKey()));
+            holdings.add(one);
+        }
+        player.add("stockHoldings", holdings);
+        context.add("player", player);
+        JsonObject gov = new JsonObject();
+        gov.addProperty("policyRate", ctx.government.policyRate);
+        gov.addProperty("tradeTax", ctx.government.effectiveTradeTax());
+        gov.addProperty("companyTax", ctx.government.effectiveCompanyTax());
+        gov.addProperty("budgetCents", ctx.government.budgetCents());
+        gov.addProperty("stress", ctx.government.indicators.stress);
+        context.add("government", gov);
+        JsonArray news = new JsonArray();
+        for (var item : ctx.news.recent(3)) {
+            news.add(item.headline);
+        }
+        context.add("recentNews", news);
+        context.addProperty("help", "常用：/ex stock list 看股票、/ex stock buy 代码 股数 买入、/ex board 看物品行情、"
+                + "/ex price 物品 查价、/ex balance 看余额、/ex news 看新闻、/ex gov status 看政策");
+        return context;
+    }
+
+    /** AI 不可用时的本地问答兜底：按关键词给一句人话回答。 */
+    private static String localQueryAnswer(Account account, String text) {
+        AimcContext ctx = ctx();
+        if (ctx == null) {
+            return null;
+        }
+        String t = text == null ? "" : text;
+        if (t.contains("余额") || t.contains("钱") || t.contains("多少币")) {
+            return "你钱包 " + Messages.money(account.balanceCents())
+                    + "，存款 " + Messages.money(account.bank.totalDepositsCents())
+                    + "，贷款 " + Messages.money(account.bank.totalLoanCents()) + "。";
+        }
+        if (t.contains("股票") || t.contains("大盘") || t.contains("指数") || t.contains("股")) {
+            StringBuilder sb = new StringBuilder("大盘 " + ctx.stocks.formatIndex()
+                    + "（7 日 " + Messages.changeText(ctx.stocks.indexChange7d(ctx.tradingDay())) + "）。");
+            sb.append("股票：");
+            int count = 0;
+            for (StockStore.Stock stock : ctx.stocks.all()) {
+                if (count++ >= 5) {
+                    break;
+                }
+                double change = stock.initialPriceCents <= 0 ? 0
+                        : (double) stock.priceCents / stock.initialPriceCents - 1.0;
+                sb.append(stock.code).append(' ').append(stock.name).append(' ')
+                        .append(Messages.money(stock.priceCents)).append('（')
+                        .append(Messages.changeText(change)).append("） ");
+            }
+            sb.append("；/ex stock list 看全部，/ex stock info 代码 看详情。");
+            return sb.toString();
+        }
+        if (t.contains("基金")) {
+            StringBuilder sb = new StringBuilder("基金净值：");
+            for (FundStore.Fund fund : ctx.funds.all()) {
+                sb.append(fund.code).append(' ').append(fund.name).append(' ')
+                        .append(ctx.funds.formatNav(fund.code)).append("；");
+            }
+            sb.append(" /ex fund buy FND01 100 可申购。");
+            return sb.toString();
+        }
+        if (t.contains("银行") || t.contains("利率") || t.contains("贷款") || t.contains("存款")) {
+            return "政策利率 " + Messages.percent(ctx.government.policyRate)
+                    + "，活期 " + Messages.percent(ctx.bank.currentRate(ctx.government.policyRate, ctx.settings))
+                    + "，贷款 " + Messages.percent(ctx.bank.loanRate(ctx.government.policyRate, ctx.settings))
+                    + "；/ex bank info 看自己的存贷款，/ex bank loan take 借款。";
+        }
+        if (t.contains("政策") || t.contains("政府") || t.contains("央行")) {
+            return "政策利率 " + Messages.percent(ctx.government.policyRate)
+                    + "，交易税 " + Messages.percent(ctx.government.effectiveTradeTax())
+                    + "，政府预算 " + Messages.money(ctx.government.budgetCents())
+                    + "，压力分 " + ctx.government.indicators.stress + "；/ex gov status 看完整指标。";
+        }
+        if (t.contains("新闻") || t.contains("消息")) {
+            var latest = ctx.news.latest();
+            return latest == null ? "最近没有新闻。" : "最近新闻：" + latest.headline;
+        }
+        if (t.contains("怎么") || t.contains("帮助") || t.contains("玩法")) {
+            return "你可以直接说：买 3 个铁锭 / 买 10 股 BLK / 存 100 币，或者用 /ex help 看全部命令。";
+        }
+        return null;
+    }
+
 
     private static JsonObject buildParseContext(Account account) {
         AimcContext ctx = ctx();

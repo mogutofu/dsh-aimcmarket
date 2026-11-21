@@ -147,6 +147,79 @@ public final class MarketAi implements AiGateway {
         }
     }
 
+    /**
+     * 玩家问答：不做严格 JSON 解析，让 AI 直接回答（只读，不产生任何数据变更）。
+     *
+     * <p>用 /mc-ai 链路：它背后是能读市场工具的自然语言 agent，适合"帮我看看 XX 股票"这种问题。
+     * exchange 的 6 个 task 是给结构化数据用的，不适合开放式问答。</p>
+     */
+    @Override
+    public String chat(String playerName, String text, JsonObject context) {
+        try {
+            if (offline()) {
+                return null;
+            }
+            if ("exchange".equals(mode())) {
+                // 明确只用 exchange 时没有问答能力，交给本地规则
+                lastRoute = ROUTE_LOCAL;
+                return null;
+            }
+            String url = buildUrl(settings.aiLegacyPath);
+            if (url == null) {
+                lastRoute = ROUTE_ERROR;
+                return null;
+            }
+            if (!reserveBudget()) {
+                throw new BudgetExceededException();
+            }
+            JsonObject request = new JsonObject();
+            request.addProperty("player", IDENTITY_PLAYER);
+            request.addProperty("uuid", IDENTITY_UUID);
+            request.addProperty("text", chatPrompt(playerName, text, context));
+            long started = System.currentTimeMillis();
+            HttpResponse response = post(url, request.toString(), timeoutMs());
+            long elapsed = System.currentTimeMillis() - started;
+            if (response.status != 200) {
+                lastRoute = ROUTE_ERROR;
+                Log.warn("[AI] chat 返回 status=" + response.status);
+                return null;
+            }
+            JsonObject root = parseObject(response.body);
+            if (root == null || !JsonFile.bool(root, "ok", false)) {
+                lastRoute = ROUTE_ERROR;
+                Log.warn("[AI] chat 失败：" + (root == null ? "返回不是 JSON" : safeError(root)));
+                return null;
+            }
+            String reply = JsonFile.str(root, "reply", "").trim();
+            if (reply.isEmpty()) {
+                lastRoute = ROUTE_ERROR;
+                return null;
+            }
+            // 去掉可能出现的 markdown 包裹/代码块
+            reply = reply.replace("```", "").trim();
+            if (reply.length() > 400) {
+                reply = reply.substring(0, 400) + "…";
+            }
+            lastRoute = ROUTE_LEGACY;
+            Log.info("[AI] chat 成功 用时=" + elapsed + "ms 问题长度=" + text.length() + " 回复长度=" + reply.length());
+            return reply;
+        } catch (IOException | RuntimeException error) {
+            lastRoute = ROUTE_ERROR;
+            Log.warn("[AI] chat 失败：" + describe(error));
+            return null;
+        }
+    }
+
+    private static String chatPrompt(String playerName, String text, JsonObject context) {
+        String player = playerName == null || playerName.isBlank() ? "玩家" : playerName;
+        return "你是 Minecraft 服务器「AIMCmarket」的市场先生，正在游戏里回答玩家问题。\n"
+                + "玩家（普通玩家，只有只读权限）" + player + " 问：" + text + "\n"
+                + "当前市场数据（JSON）：" + contextText(context) + "\n"
+                + "要求：直接用中文口语回答，120 字以内；不要 markdown、不要输出 JSON、不要解释你是 AI；"
+                + "只根据上面的数据回答，不要编造不存在的股票或物品；"
+                + "如果玩家想买卖/转账/开公司等，告诉他用对应的 /ex 命令，例如 /ex stock buy BLK 10、/ex buy 铁锭 3。";
+    }
+
     @Override
     public boolean ping() {
         try {

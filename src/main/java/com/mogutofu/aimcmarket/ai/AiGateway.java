@@ -24,6 +24,14 @@ public interface AiGateway {
     /** 政府政策建议。 */
     JsonObject government(JsonObject context);
 
+    /**
+     * 普通玩家问答（只读）：把市场上下文和玩家问题一起交给 AI，返回一段中文自然语言回答。
+     *
+     * <p>不是下单接口：返回值只给玩家看，模组不会据此改任何数据。
+     * AI 不可用/超时/回复为空时返回 null，调用方用本地规则回答。</p>
+     */
+    String chat(String playerName, String text, JsonObject context);
+
     /** ping 一下，看接口是否可用（用于 /ex admin stats 显示链路状态）。 */
     boolean ping();
 
