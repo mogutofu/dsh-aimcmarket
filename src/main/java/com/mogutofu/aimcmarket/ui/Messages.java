@@ -60,8 +60,28 @@ public final class Messages {
 
     // ── 发送 ──
 
+    /** 命令嵌套执行时的输出捕获缓冲（ThreadLocal，仅主线程用）。 */
+    private static final ThreadLocal<java.util.List<Component>> CAPTURE = new ThreadLocal<>();
+
+    /** 开始捕获本线程要发给玩家的消息（不真正发送）。 */
+    public static void beginCapture() {
+        CAPTURE.set(new java.util.ArrayList<>());
+    }
+
+    /** 结束捕获，返回收集到的消息。 */
+    public static java.util.List<Component> endCapture() {
+        java.util.List<Component> captured = CAPTURE.get();
+        CAPTURE.remove();
+        return captured == null ? java.util.List.of() : captured;
+    }
+
     /** 统一投递：玩家直接发系统消息（不依赖 sendCommandFeedback/命令反馈设置），控制台/RCON 走 sendSuccess。 */
     private static void deliver(CommandSourceStack source, Component component) {
+        java.util.List<Component> captured = CAPTURE.get();
+        if (captured != null) {
+            captured.add(component);
+            return;
+        }
         net.minecraft.server.level.ServerPlayer player = source.getPlayer();
         if (player != null) {
             player.sendSystemMessage(component);

@@ -1546,23 +1546,43 @@ public final class MarketCommand {
         if (cmd.startsWith("ex ")) {
             cmd = "/" + cmd;
         }
-        // 用玩家当前状态的"新"命令源执行，避免沿用外层命令已经结束的上下文（否则输出可能发不出去）
+        // 用玩家当前状态的"新"命令源执行；嵌套执行的聊天输出先捕获，再直接转投给玩家
+        // （MC 的嵌套命令输出有时发不到客户端，捕获后由模组自己发送，保证所有命令都有反馈）
+        boolean capturing = source.getPlayer() != null;
+        if (capturing) {
+            Messages.beginCapture();
+        }
+        int result = 0;
+        boolean executed = false;
         try {
             CommandSourceStack execSource = source;
             net.minecraft.server.level.ServerPlayer player = source.getPlayer();
             if (player != null) {
                 execSource = player.createCommandSourceStack();
             }
-            int result = source.getServer().getCommands().getDispatcher().execute(cmd, execSource);
-            com.mogutofu.aimcmarket.util.Log.info("[代执行命令] " + cmd + " → result=" + result);
-            return result > 0;
+            result = source.getServer().getCommands().getDispatcher().execute(cmd, execSource);
+            executed = true;
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException error) {
-            Messages.sendFail(source, "AI 生成的命令没执行成功：" + error.getMessage());
-            return false;
+            if (!capturing) {
+                Messages.sendFail(source, "AI 生成的命令没执行成功：" + error.getMessage());
+            } else {
+                Messages.sendFail(source, "AI 生成的命令没执行成功：" + error.getMessage());
+            }
         } catch (RuntimeException error) {
             Messages.sendFail(source, "命令执行失败：" + error.getMessage());
-            return false;
+        } finally {
+            if (capturing) {
+                java.util.List<net.minecraft.network.chat.Component> captured = Messages.endCapture();
+                for (net.minecraft.network.chat.Component one : captured) {
+                    Messages.send(source, one);
+                }
+                com.mogutofu.aimcmarket.util.Log.info("[代执行命令] " + cmd + " → result=" + result
+                        + "，转投 " + captured.size() + " 条输出");
+            } else {
+                com.mogutofu.aimcmarket.util.Log.info("[代执行命令] " + cmd + " → result=" + result);
+            }
         }
+        return executed && result > 0;
     }
 
     /** AI 规划出的"动作类"命令：直接在模组里执行（不走命令系统嵌套，保证结果消息能发到玩家）。 */
