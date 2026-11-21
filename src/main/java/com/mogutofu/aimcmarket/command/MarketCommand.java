@@ -1375,16 +1375,22 @@ public final class MarketCommand {
                 ? data.get("action").getAsString().trim().toLowerCase(java.util.Locale.ROOT) : "none";
         // 玩家原话里明确说"退"就按退货处理（别让 AI 把退货当成收购）
         String spoken = text == null ? "" : text;
-        if (spoken.contains("退")) {
-            action = "return";
-        } else if (spoken.contains("收购") || spoken.contains("卖掉") || spoken.contains("卖了")
-                || spoken.contains("出售") || spoken.contains("回收")) {
-            action = "sell";
+        boolean stockAction = "buy_stock".equals(action) || "sell_stock".equals(action);
+        if (!stockAction) {
+            if (spoken.contains("退")) {
+                action = "return";
+            } else if (spoken.contains("收购") || spoken.contains("卖掉") || spoken.contains("卖了")
+                    || spoken.contains("出售") || spoken.contains("回收")) {
+                action = "sell";
+            }
+            stockAction = "buy_stock".equals(action) || "sell_stock".equals(action);
         }
         boolean buying = "buy".equals(action);
         boolean selling = "sell".equals(action);
         boolean returning = "return".equals(action);
-        if (!buying && !selling && !returning) {
+        boolean buyStock = "buy_stock".equals(action);
+        boolean sellStock = "sell_stock".equals(action);
+        if (!buying && !selling && !returning && !buyStock && !sellStock) {
             // 不是买卖：当作问题交给只读问答
             askChat(account.uuid, text);
             return;
@@ -1399,6 +1405,30 @@ public final class MarketCommand {
             }
         }
         String itemName = data.has("itemName") ? data.get("itemName").getAsString().trim() : "";
+        // 股票买卖：AI 返回 buy_stock / sell_stock + stockCode/stockName
+        if (buyStock || sellStock) {
+            String stockCode = data.has("stockCode") ? data.get("stockCode").getAsString().trim() : "";
+            String stockName = data.has("stockName") ? data.get("stockName").getAsString().trim() : "";
+            StockStore.Stock stock = resolveStockByText(stockCode);
+            if (stock == null) {
+                stock = resolveStockByText(stockName);
+            }
+            if (stock == null) {
+                stock = resolveStockByText(itemName);
+            }
+            if (stock == null) {
+                Messages.sendFail(source, "没找到这只股票：" + (stockName.isBlank() ? stockCode : stockName)
+                        + "（/ex stock list 看代码和名字）");
+                return;
+            }
+            long shares = Math.max(1L, quantity);
+            ActionResult result = buyStock
+                    ? FinanceService.buyStock(ctx, account, stock.code, shares)
+                    : FinanceService.sellStock(ctx, account, stock.code, shares);
+            send(source, result);
+            tickGovernment(source);
+            return;
+        }
         // 0) 玩家原话里直接写了物品 id：以 id 为准（避免"火箭燃料罐"被 AI 认成别的物品）
         String explicitId = findIdToken(text);
         // 1) 已学习的中文名/别名优先（市场目录里绑定过的名字比 AI 猜的更可信）
@@ -1471,6 +1501,19 @@ public final class MarketCommand {
             catalog.add(one);
         }
         context.add("catalog", catalog);
+        // 股票列表（NPC + 现实股票都放进去，AI 才知道"宁德时代"=CATL）
+        JsonArray stocks = new JsonArray();
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", stock.code);
+            one.addProperty("name", stock.name);
+            one.addProperty("priceCents", stock.priceCents);
+            one.addProperty("real", stock.realSymbol != null && !stock.realSymbol.isBlank());
+            stocks.add(one);
+        }
+        context.add("stocks", stocks);
+        context.addProperty("stockHint", "玩家说买/卖股票（宁德时代、茅台、AAPL、苹果…）时，"
+                + "action 用 buy_stock 或 sell_stock，回来 stockCode/stockName 和 quantity=股数。");
         return context;
     }
 
@@ -2015,6 +2058,40 @@ public final class MarketCommand {
         return Command.SINGLE_SUCCESS;
     }
 
+    /** 股票代码或中文名 → Stock（"宁德时代"/"CATL"/"600519" 都认）。 */
+    private static StockStore.Stock resolveStockByText(String text) {
+        AimcContext ctx = ctx();
+        if (ctx == null || text == null || text.isBlank()) {
+            return null;
+        }
+        String value = text.trim();
+        StockStore.Stock direct = ctx.stocks.stock(value);
+        if (direct != null) {
+            return direct;
+        }
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            if (stock.name.equalsIgnoreCase(value)) {
+                return stock;
+            }
+        }
+        // 名字包含：取最长的匹配，避免"银行"命中多只
+        StockStore.Stock best = null;
+        int bestLength = 0;
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            if (stock.name != null && stock.name.length() >= 2 && value.contains(stock.name)
+                    && stock.name.length() > bestLength) {
+                best = stock;
+                bestLength = stock.name.length();
+            }
+        }
+        if (best != null) {
+            return best;
+        }
+        // 玩家自己输的代码带大小写/空格
+        String upper = value.toUpperCase(java.util.Locale.ROOT);
+        return ctx.stocks.stock(upper);
+    }
+
     private static int stockBuy(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         if (!ready(source)) {
@@ -2024,7 +2101,13 @@ public final class MarketCommand {
         if (account == null) {
             return 0;
         }
-        send(source, FinanceService.buyStock(ctx(), account, StringArgumentType.getString(context, "code"),
+        StockStore.Stock stock = resolveStockByText(StringArgumentType.getString(context, "code"));
+        if (stock == null) {
+            Messages.sendFail(source, "没有这只股票：" + StringArgumentType.getString(context, "code")
+                    + "（/ex stock list 看代码和名字）");
+            return 0;
+        }
+        send(source, FinanceService.buyStock(ctx(), account, stock.code,
                 LongArgumentType.getLong(context, "shares")));
         tickGovernment(source);
         return Command.SINGLE_SUCCESS;
@@ -2039,7 +2122,13 @@ public final class MarketCommand {
         if (account == null) {
             return 0;
         }
-        send(source, FinanceService.sellStock(ctx(), account, StringArgumentType.getString(context, "code"),
+        StockStore.Stock stock = resolveStockByText(StringArgumentType.getString(context, "code"));
+        if (stock == null) {
+            Messages.sendFail(source, "没有这只股票：" + StringArgumentType.getString(context, "code")
+                    + "（/ex stock list 看代码和名字）");
+            return 0;
+        }
+        send(source, FinanceService.sellStock(ctx(), account, stock.code,
                 LongArgumentType.getLong(context, "shares")));
         tickGovernment(source);
         return Command.SINGLE_SUCCESS;
@@ -2052,6 +2141,10 @@ public final class MarketCommand {
         }
         Account account = source.getPlayer() == null ? null : ctx().accounts.get(source.getPlayer().getUUID().toString());
         String code = StringArgumentType.getString(context, "code");
+        StockStore.Stock resolved = resolveStockByText(code);
+        if (resolved != null) {
+            code = resolved.code;
+        }
         String text = FinanceService.stockInfo(ctx(), account, code);
         if (text == null || text.isBlank()) {
             Messages.sendFail(source, "没有这个股票代码");

@@ -8,6 +8,7 @@
 
 ### 新增
 
+- 股票自然语言交易：AI 上下文加入全部股票（代码/名字/价格），新增 buy_stock/sell_stock 动作；/ex stock buy|sell|info 也支持中文名（如「宁德时代」）。
 - 现实股票同步：config/aimcmarket/real-stocks.json 配置美股/A股代码，每 5 分钟从腾讯行情接口同步真实价格；现实股票不参与随机波动，游戏内可正常买卖。
 - 公司融资：/ex company invest <公司> <金额> 合伙人投钱换股份（钱进公司、按估值定价、单次≤49%），/ex company shareholders <公司> 看股东；公司升级改为只看升级费（不再要求员工数/累计营收）。
 - 收购/退货：自然语言「把背包里的 X 收购掉」按当前市场价卖出；/ex return <物品> [数量] 或自然语言「退货 X N」按原买入价退款（7 天窗口，物品需在背包里，买入记录存 world/aimcmarket/purchases.json）。

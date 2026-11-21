@@ -347,8 +347,9 @@ public final class MarketAi implements AiGateway {
                     + "   如果玩家消息里直接写了形如 命名空间:路径 的物品 id，把该 id 放在 candidates 第一位，优先用它。\n"
                     + "   keywords 填 3~8 个小写英文关键词（用于在服务器注册表里匹配）；\n"
                     + "   priceCents 填该物品的合理单价（分，1 币=100 分，100~2000000）；如果目录里已有这个物品就填 0。\n"
-                    + "2) 其他问题：action 填 none，其余字段留空/0。\n"
-                    + "只输出一个 JSON 对象：{\"action\":\"buy|sell|none\",\"quantity\":1,\"itemName\":\"\","
+                    + "2) 想买/卖股票（股票代码或名字，如 宁德时代/AAPL/茅台）：action 用 buy_stock 或 sell_stock，把代码/名字分别填到 stockCode/stockName，quantity=股数（没说就 1）。\n"
+                    + "3) 其他问题：action 填 none，其余字段留空/0。\n"
+                    + "只输出一个 JSON 对象：{\"action\":\"buy|sell|buy_stock|sell_stock|return|none\",\"quantity\":1,\"itemName\":\"\",\"stockCode\":\"\",\"stockName\":\"\","
                     + "\"candidates\":[],\"keywords\":[],\"priceCents\":0}。不要解释、不要 markdown。");
             long started = System.currentTimeMillis();
             HttpResponse response = post(url, request.toString(), Math.max(timeoutMs(), 25_000));
