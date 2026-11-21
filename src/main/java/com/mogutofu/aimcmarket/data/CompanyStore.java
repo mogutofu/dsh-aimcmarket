@@ -37,11 +37,15 @@ public final class CompanyStore {
         SECTORS.put("manufacturing", "制造");
         SECTORS.put("trading", "贸易");
         SECTORS.put("service", "服务");
+        SECTORS.put("medical", "医疗");
+        SECTORS.put("aerospace", "航天");
         SECTOR_BASE_REVENUE.put("mining", 50_000L);      // 500 币/交易日
         SECTOR_BASE_REVENUE.put("farming", 35_000L);     // 350 币
         SECTOR_BASE_REVENUE.put("manufacturing", 65_000L); // 650 币
         SECTOR_BASE_REVENUE.put("trading", 42_000L);     // 420 币
         SECTOR_BASE_REVENUE.put("service", 38_000L);     // 380 币
+        SECTOR_BASE_REVENUE.put("medical", 60_000L);      // 600 币/交易日
+        SECTOR_BASE_REVENUE.put("aerospace", 72_000L);    // 720 币/交易日
     }
 
     /** 公司等级 1-5 的升级门槛：累计营收（分）与升级费（分）。 */

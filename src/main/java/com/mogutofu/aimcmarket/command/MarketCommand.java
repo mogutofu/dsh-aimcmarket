@@ -966,7 +966,7 @@ public final class MarketCommand {
         String[] parts = splitLast(text(context, "args"));
         String sectorCode = sectorCode(parts[1]);
         if (sectorCode == null || parts[0].isEmpty()) {
-            Messages.sendFail(context.getSource(), "用法：/ex company create <名字> <采矿|农业|制造|贸易|服务>");
+            Messages.sendFail(context.getSource(), "用法：/ex company create <名字> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return 0;
         }
         return companyCreate(context, parts[0], sectorCode);
@@ -1003,7 +1003,7 @@ public final class MarketCommand {
     private static int companySectorArgs(CommandContext<CommandSourceStack> context) {
         String[] parts = splitLast(text(context, "args"));
         if (sectorCode(parts[1]) == null) {
-            Messages.sendFail(context.getSource(), "用法：/ex company sector <公司> <采矿|农业|制造|贸易|服务>");
+            Messages.sendFail(context.getSource(), "用法：/ex company sector <公司> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return 0;
         }
         return companySector(context, parts[0], parts[1]);
@@ -3353,7 +3353,7 @@ public final class MarketCommand {
         }
         String code = sectorCode(sector);
         if (code == null) {
-            Messages.sendFail(source, "行业只有：采矿/农业/制造/贸易/服务");
+            Messages.sendFail(source, "行业只有：采矿/农业/制造/贸易/服务/医疗/航天");
             return 0;
         }
         try {
@@ -3449,7 +3449,7 @@ public final class MarketCommand {
         if (company == null) {
             List<CompanyStore.Company> mine = account == null ? List.of() : ctx().companies.byCeo(account.uuid);
             if (mine.isEmpty()) {
-                Messages.sendFail(source, "你还没有公司。开公司：/ex company create <名字> <采矿|农业|制造|贸易|服务>");
+                Messages.sendFail(source, "你还没有公司。开公司：/ex company create <名字> <采矿|农业|制造|贸易|服务|医疗|航天>");
                 return 0;
             }
             company = mine.get(0);

@@ -148,6 +148,10 @@ public final class RealStockFeed {
         addDefault(stocks, "BYD", "sz002594", "比亚迪", "汽车", "CN");
         addDefault(stocks, "CMB", "sh600036", "招商银行", "金融", "CN");
         addDefault(stocks, "PAIC", "sh601318", "中国平安", "保险", "CN");
+        addDefault(stocks, "AMD", "usAMD", "超威半导体", "半导体", "US");
+        addDefault(stocks, "TSM", "usTSM", "台积电", "半导体", "US");
+        addDefault(stocks, "ASML", "usASML", "阿斯麦", "半导体", "US");
+        addDefault(stocks, "LLY", "usLLY", "礼来", "医疗", "US");
         root.add("stocks", stocks);
         try {
             Files.createDirectories(file.getParent());

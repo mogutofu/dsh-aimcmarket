@@ -179,7 +179,7 @@ public final class DirectCompanyCommands {
             lines.add(line.toString());
         }
         if (lines.isEmpty()) {
-            Messages.sendInfo(source, "还没有人开公司。开一家：/ex company create <名字> <采矿|农业|制造|贸易|服务>");
+            Messages.sendInfo(source, "还没有人开公司。开一家：/ex company create <名字> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return;
         }
         Messages.send(source, "共 " + lines.size() + " 家公司：");
@@ -252,13 +252,13 @@ public final class DirectCompanyCommands {
             return;
         }
         if (parts.length < 4) {
-            DirectSupport.fail(source, "用法：/ex company create <公司名> <采矿|农业|制造|贸易|服务>");
+            DirectSupport.fail(source, "用法：/ex company create <公司名> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return;
         }
         String sectorText = parts[parts.length - 1];
         String name = DirectSupport.join(parts, 2, parts.length - 1);
         if (name.isEmpty()) {
-            DirectSupport.fail(source, "用法：/ex company create <公司名> <采矿|农业|制造|贸易|服务>");
+            DirectSupport.fail(source, "用法：/ex company create <公司名> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return;
         }
         String sector = sectorCode(sectorText);
@@ -453,7 +453,7 @@ public final class DirectCompanyCommands {
             sectorText = parts[parts.length - 1];
             nameText = DirectSupport.join(parts, 2, parts.length - 1);
         } else {
-            DirectSupport.fail(source, "用法：/ex company sector <公司> <采矿|农业|制造|贸易|服务>");
+            DirectSupport.fail(source, "用法：/ex company sector <公司> <采矿|农业|制造|贸易|服务|医疗|航天>");
             return;
         }
         CompanyStore.Company company = mine(source, account, nameText);
@@ -947,7 +947,7 @@ public final class DirectCompanyCommands {
         String value = text == null ? "" : text.trim();
         if (value.isEmpty()) {
             if (owned.isEmpty()) {
-                DirectSupport.fail(source, "你还没有公司，先 /ex company create <名字> <采矿|农业|制造|贸易|服务> 开一家");
+                DirectSupport.fail(source, "你还没有公司，先 /ex company create <名字> <采矿|农业|制造|贸易|服务|医疗|航天> 开一家");
                 return null;
             }
             if (owned.size() > 1) {
