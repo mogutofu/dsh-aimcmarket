@@ -91,6 +91,8 @@ public final class MarketCommand {
                 .executes(context -> buyArgs(context, false))));
         root.then(Commands.literal("price").then(Commands.argument("item", StringArgumentType.greedyString())
                 .executes(MarketCommand::priceArgs)));
+        root.then(Commands.literal("buyback").then(Commands.argument("args", StringArgumentType.greedyString())
+                .executes(MarketCommand::buybackArgs)));
         root.then(Commands.literal("news")
                 .executes(context -> news(context, 1))
                 .then(Commands.argument("page", IntegerArgumentType.integer(1, 99))
@@ -180,6 +182,8 @@ public final class MarketCommand {
                         .executes(MarketCommand::companyRaiseArgs)))
                 .then(Commands.literal("invest").then(Commands.argument("args", StringArgumentType.greedyString())
                         .executes(MarketCommand::companyInvestArgs)))
+                .then(Commands.literal("rename").then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(MarketCommand::companyRenameArgs)))
                 .then(Commands.literal("shareholders").then(Commands.argument("company", StringArgumentType.greedyString())
                         .executes(MarketCommand::companyShareholdersArgs)))
                 .then(Commands.literal("info")
@@ -560,6 +564,97 @@ public final class MarketCommand {
         } catch (RuntimeException error) {
             com.mogutofu.aimcmarket.util.Log.warn("记录买入失败（这单可能无法退货）", error);
         }
+    }
+
+    /** /ex buyback <物品> [数量]：把背包里的物品按当前市场价卖给市场（数量省略=全部）。 */
+    private static int buybackArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String raw = text(context, "args").trim();
+        if (raw.isEmpty()) {
+            Messages.sendFail(source, "用法：/ex buyback <物品> [数量]，例：/ex buyback 齿轮");
+            return 0;
+        }
+        int count = 0;
+        String itemText = raw;
+        String[] parts = splitLast(raw);
+        if (!parts[1].isEmpty()) {
+            try {
+                count = Integer.parseInt(parts[1]);
+                itemText = parts[0];
+            } catch (NumberFormatException ignored) {
+                count = 0;
+            }
+        }
+        final int requested = count;
+        MarketStore.CatalogItem item = ctx().market.resolve(itemText);
+        if (item != null) {
+            acquireFromPlayer(source, account, item, requested);
+            return Command.SINGLE_SUCCESS;
+        }
+        if (ItemResolver.resolve(itemText) != null) {
+            ensureCatalogItem(source, itemText, created -> acquireFromPlayer(source, account, created, requested));
+            return Command.SINGLE_SUCCESS;
+        }
+        String handId = handItemId(source.getPlayer());
+        if (isHandKeyword(itemText) && handId != null) {
+            MarketStore.CatalogItem handItem = ctx().market.item(handId);
+            if (handItem != null) {
+                acquireFromPlayer(source, account, handItem, requested);
+            } else {
+                ensureCatalogItem(source, handId, created -> acquireFromPlayer(source, account, created, requested));
+            }
+            return Command.SINGLE_SUCCESS;
+        }
+        Messages.sendFail(source, "市场里没有这个物品：" + itemText);
+        return 0;
+    }
+
+    /** /ex company rename <公司> <新名字>：CEO 改公司名。 */
+    private static int companyRenameArgs(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        Account account = player(source);
+        if (account == null) {
+            return 0;
+        }
+        String raw = text(context, "args").trim();
+        if (raw.isEmpty()) {
+            Messages.sendFail(source, "用法：/ex company rename <公司> <新名字>");
+            return 0;
+        }
+        String[] parts = splitLast(raw);
+        CompanyStore.Company company;
+        String newName;
+        if (parts[1].isEmpty()) {
+            java.util.List<CompanyStore.Company> mine = ctx().companies.byCeo(account.uuid);
+            if (mine.size() != 1) {
+                Messages.sendFail(source, "用法：/ex company rename <公司> <新名字>（你名下有 " + mine.size() + " 家公司）");
+                return 0;
+            }
+            company = mine.get(0);
+            newName = raw;
+        } else {
+            company = resolveCompany(account, parts[0]);
+            if (company == null) {
+                company = findAnyCompany(parts[0]);
+            }
+            newName = parts[1];
+        }
+        if (company == null) {
+            Messages.sendFail(source, "找不到公司：" + raw);
+            return 0;
+        }
+        send(source, CompanyEngine.rename(ctx(), account, company, newName));
+        return Command.SINGLE_SUCCESS;
     }
 
     /** 收购：按当前市场价收玩家背包里的物品（AI 刚定价的物品也算）。 */
@@ -1349,18 +1444,249 @@ public final class MarketCommand {
             }
             return Command.SINGLE_SUCCESS;
         }
+        // 只读查询和少数固定操作走本地快速路径：结果确定、不花 AI 配额，也避免 AI 把"查持仓"翻译成"查流水"
+        if (tryLocalQueryCommand(source, account, text)) {
+            return Command.SINGLE_SUCCESS;
+        }
         long now = System.currentTimeMillis();
         if (now - account.lastAiAtMs < ctx.settings.aiPlayerMinIntervalMs) {
             Messages.sendFail(source, "慢一点，AI 每 2 秒只能问一次");
             return 0;
         }
         account.lastAiAtMs = now;
-        String playerName = account.name;
         Messages.sendInfo(source, "市场先生正在理解你的请求…");
-        JsonObject tradeContext = buildTradeContext(account);
-        ctx.aiSubmitter.submit("trade", () -> ctx.ai.parseTradeIntent(playerName, text, tradeContext),
-                data -> handleTradeAi(source, account, text, data));
+        JsonObject planContext = buildPlanContext(account);
+        ctx.aiSubmitter.submit("plan", () -> ctx.ai.planCommand(account.name, text, planContext),
+                data -> {
+                    String command = data != null && data.has("command")
+                            ? data.get("command").getAsString().trim() : "";
+                    if (command.isEmpty()) {
+                        // 单纯问问题：走只读问答
+                        askChat(account.uuid, text);
+                        return;
+                    }
+                    if (!isAllowedPlayerCommand(command)) {
+                        Messages.sendFail(source, "AI 想执行不允许的命令，已拦下：" + command);
+                        askChat(account.uuid, text);
+                        return;
+                    }
+                    if (!executePlayerCommand(source, command)) {
+                        askChat(account.uuid, text);
+                    }
+                });
         return Command.SINGLE_SUCCESS;
+    }
+
+    // ── AI 生成命令（代替玩家操作）──
+
+    /** 允许 AI 代玩家执行的 /ex 子命令白名单（不含 admin，也没有任何 OP 操作）。 */
+    private static final java.util.Set<String> ALLOWED_PLAYER_COMMANDS = java.util.Set.of(
+            "help", "balance", "pay", "work", "daily", "id", "alias", "return", "buy", "sell", "buyback",
+            "price", "news", "board", "top", "history", "stock", "fund", "bank", "company", "ipo",
+            "fut", "opt", "gov");
+
+    /** 给 AI 的命令速查表（只读+玩家可执行）。 */
+    private static final String COMMAND_HELP = ""
+            + "/ex balance｜/ex history｜/ex board [页]｜/ex news [页]｜/ex top｜/ex price <物品>\n"
+            + "/ex buy <物品> <数量>｜/ex sell <物品> <数量>｜/ex buyback <物品> [数量]｜/ex return <物品> [数量]\n"
+            + "/ex stock list｜/ex stock info <代码或名字>｜/ex stock buy|sell <代码或名字> <股数>\n"
+            + "/ex fund list｜/ex fund info <代码>｜/ex fund buy <代码> <金额>｜/ex fund sell <代码> <份额>\n"
+            + "/ex bank info｜/ex bank deposit|withdraw <金额>｜/ex bank term <天数7-30> <金额>｜"
+            + "/ex bank loan take [金额]｜/ex bank loan repay <金额>\n"
+            + "/ex company list｜/ex company info <公司>｜/ex company create <名字> <行业>｜"
+            + "/ex company invest <公司> <金额>｜/ex company hire <公司> <人数>｜/ex company fire <公司> <人数>｜"
+            + "/ex company dividend <公司> <0-80>｜/ex company levelup <公司>｜/ex company sector <公司> <行业>｜"
+            + "/ex company shareholders <公司>｜/ex company rename <公司> <新名字>｜/ex company raise <公司> <金额>\n"
+            + "/ex ipo status [公司]｜/ex ipo apply <0.10-0.49>｜/ex ipo confirm\n"
+            + "/ex fut list｜/ex fut quote <标的> <天数>｜/ex fut long|short <标的> <手数> <天数>｜"
+            + "/ex fut close <id>｜/ex fut positions｜/ex fut margin add|withdraw <id> <金额>\n"
+            + "/ex opt list｜/ex opt quote <代码> <行权价> <天数>｜/ex opt buy|sell <call|put> <代码> <行权价> <天数> <张数>｜"
+            + "/ex opt close <id>｜/ex opt positions\n"
+            + "/ex gov status｜/ex gov budget｜/ex gov policies｜/ex gov history｜/ex work｜/ex daily｜"
+            + "/ex pay <玩家> <金额>｜/ex id｜/ex alias <名字> [物品id]";
+
+    /** AI 返回的命令是否允许代替玩家执行。 */
+    private static boolean isAllowedPlayerCommand(String command) {
+        String trimmed = command == null ? "" : command.trim();
+        if (trimmed.length() > 240 || trimmed.contains("\n") || trimmed.contains("\r")) {
+            return false;
+        }
+        String rest;
+        if (trimmed.startsWith("/ex ")) {
+            rest = trimmed.substring(4).trim();
+        } else if (trimmed.startsWith("ex ")) {
+            rest = trimmed.substring(3).trim();
+        } else {
+            return false;
+        }
+        if (rest.isEmpty()) {
+            return false;
+        }
+        int space = rest.indexOf(' ');
+        String root = (space < 0 ? rest : rest.substring(0, space)).toLowerCase(java.util.Locale.ROOT);
+        return ALLOWED_PLAYER_COMMANDS.contains(root);
+    }
+
+    /** 以玩家身份执行一条 /ex 命令（权限/公司 CEO 校验都由命令自身保证）。 */
+    private static boolean executePlayerCommand(CommandSourceStack source, String command) {
+        if (source == null || source.getServer() == null) {
+            return false;
+        }
+        String cmd = command.trim();
+        if (cmd.startsWith("ex ")) {
+            cmd = "/" + cmd;
+        }
+        try {
+            source.getServer().getCommands().getDispatcher().execute(cmd, source);
+            return true;
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException error) {
+            Messages.sendFail(source, "AI 生成的命令没执行成功：" + error.getMessage());
+            return false;
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "命令执行失败：" + error.getMessage());
+            return false;
+        }
+    }
+
+    /** 本地快速路径：安全的只读查询 + 改名/升级公司。命中返回 true。 */
+    private static boolean tryLocalQueryCommand(CommandSourceStack source, Account account, String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String t = text.trim();
+        // 1) 改公司名（固定格式，直接执行；CEO 权限由命令自己校验）
+        if (t.contains("改名") || t.contains("改叫") || t.contains("更名") || t.contains("改名为")) {
+            String newName = t.replaceAll(".*?(改名为|改名成|改名|改叫|更名成|更名|改成)", "").trim();
+            newName = newName.replaceAll("^(叫|为|成)", "").replaceAll("[吧呗啊。！!？?，,]+$", "").trim();
+            if (!newName.isBlank()) {
+                return executePlayerCommand(source, "/ex company rename " + newName);
+            }
+        }
+        // 2) 升级公司（只有一家公司时直接升）
+        if (t.contains("升级公司") || (t.contains("公司") && t.contains("升级"))) {
+            java.util.List<CompanyStore.Company> mine = ctx().companies.byCeo(account.uuid);
+            if (mine.size() == 1) {
+                return executePlayerCommand(source, "/ex company levelup " + mine.get(0).name);
+            }
+        }
+        // 3) 只读查询：带动作词就不拦截，交给 AI
+        String[] actionWords = {"买", "卖", "收购", "退", "改名", "改叫", "升级", "招", "雇", "投资",
+                "融资", "创建", "开公司", "下单", "买入", "卖出", "平仓", "开仓", "存", "取", "借", "还",
+                "申请", "确认", "分红", "增发", "解雇"};
+        for (String word : actionWords) {
+            if (t.contains(word)) {
+                return false;
+            }
+        }
+        String command = null;
+        if (t.contains("基金")) {
+            command = "/ex fund list";
+        } else if (t.contains("持仓") || t.contains("买了哪些股票") || t.contains("我的股票")
+                || t.contains("持有哪些股票") || t.contains("股票持仓")) {
+            command = "/ex stock list";
+        } else if (t.contains("流水") || t.contains("历史记录") || t.contains("交易记录")) {
+            command = "/ex history";
+        } else if (t.contains("公司")) {
+            command = "/ex company list";
+        } else if (t.contains("银行") || t.contains("存款") || t.contains("贷款")) {
+            command = "/ex bank info";
+        } else if (t.contains("政策") || t.contains("政府")) {
+            command = "/ex gov status";
+        } else if (t.contains("新闻")) {
+            command = "/ex news";
+        } else if (t.contains("期货")) {
+            command = "/ex fut positions";
+        } else if (t.contains("期权")) {
+            command = "/ex opt positions";
+        } else if (t.contains("余额")) {
+            command = "/ex balance";
+        } else if (t.contains("排行")) {
+            command = "/ex top";
+        } else if (t.contains("行情") || t.contains("大盘") || t.contains("物价")) {
+            command = "/ex board";
+        }
+        if (command == null) {
+            return false;
+        }
+        return executePlayerCommand(source, command);
+    }
+
+    /** 给"翻译成命令"AI 的上下文：命令表 + 股票/基金/公司 + 玩家自己的数据。 */
+    private static JsonObject buildPlanContext(Account account) {
+        AimcContext ctx = ctx();
+        JsonObject context = new JsonObject();
+        context.addProperty("commandHelp", COMMAND_HELP);
+        StringBuilder stockLine = new StringBuilder();
+        JsonArray stocks = new JsonArray();
+        for (StockStore.Stock stock : ctx.stocks.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", stock.code);
+            one.addProperty("name", stock.name);
+            one.addProperty("priceCents", stock.priceCents);
+            one.addProperty("real", stock.realSymbol != null && !stock.realSymbol.isBlank());
+            stocks.add(one);
+            if (stockLine.length() > 0) {
+                stockLine.append("，");
+            }
+            stockLine.append(stock.name).append('=').append(stock.code);
+        }
+        context.add("stocks", stocks);
+        context.addProperty("stocksLine", stockLine.toString());
+        JsonArray funds = new JsonArray();
+        for (FundStore.Fund fund : ctx.funds.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", fund.code);
+            one.addProperty("name", fund.name);
+            one.addProperty("nav", ctx.funds.formatNav(fund.code));
+            funds.add(one);
+        }
+        context.add("funds", funds);
+        JsonArray companies = new JsonArray();
+        for (CompanyStore.Company company : ctx.companies.all()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("name", company.name);
+            if (company.code != null) {
+                one.addProperty("code", company.code);
+            }
+            one.addProperty("listed", company.listed);
+            one.addProperty("ceo", company.ceoUuid.equals(account.uuid));
+            one.addProperty("sharesTotal", company.sharesTotal);
+            one.addProperty("valuationCents", company.valuationCents);
+            if (company.ceoUuid.equals(account.uuid)) {
+                one.addProperty("myShares", company.sharesOf(account.uuid));
+                one.addProperty("cashCents", company.cashCents);
+                one.addProperty("level", company.level);
+                one.addProperty("employees", company.employees);
+            }
+            companies.add(one);
+        }
+        context.add("companies", companies);
+        JsonObject player = new JsonObject();
+        player.addProperty("name", account.name);
+        player.addProperty("balanceCents", account.balanceCents());
+        JsonArray holdings = new JsonArray();
+        for (var entry : account.stocks.entrySet()) {
+            JsonObject one = new JsonObject();
+            one.addProperty("code", entry.getKey());
+            one.addProperty("shares", entry.getValue().shares);
+            holdings.add(one);
+        }
+        player.add("stockHoldings", holdings);
+        JsonArray fundHoldings = new JsonArray();
+        for (FundStore.Fund fund : ctx.funds.all()) {
+            long units = account.fundUnitsMilli(fund.code);
+            if (units > 0L) {
+                JsonObject one = new JsonObject();
+                one.addProperty("code", fund.code);
+                one.addProperty("units", units / 1000L);
+                fundHoldings.add(one);
+            }
+        }
+        player.add("fundHoldings", fundHoldings);
+        player.addProperty("depositCents", account.bank.totalDepositsCents());
+        player.addProperty("loanCents", account.bank.totalLoanCents());
+        context.add("player", player);
+        return context;
     }
 
     /** AI 返回买卖意图后的落地：认物品（必要时自动上市）→ 扣钱/给物品。 */

@@ -729,6 +729,23 @@ public final class CompanyStore {
         return newShares;
     }
 
+    /** 改公司名（CEO 用；名字不能和已有公司重复）。 */
+    public void rename(Company company, String newName) {
+        if (company == null || newName == null || newName.isBlank()) {
+            throw new IllegalArgumentException("新公司名不能为空");
+        }
+        String name = newName.trim();
+        if (name.length() > 16) {
+            throw new IllegalArgumentException("公司名最多 16 个字");
+        }
+        for (Company other : companies.values()) {
+            if (other != company && other.name.equalsIgnoreCase(name)) {
+                throw new IllegalStateException("已经有叫「" + name + "」的公司了");
+            }
+        }
+        company.name = name;
+    }
+
     /**
      * 合伙人/投资人入股：投资人转钱进公司账户，公司增发新股给投资人。
      *

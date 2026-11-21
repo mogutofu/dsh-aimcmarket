@@ -324,6 +324,76 @@ public final class MarketAi implements AiGateway {
     }
 
     /**
+     * 把玩家的话翻译成一条 /ex 命令（查询/交易/公司操作都可以），由模组以玩家身份执行。
+     *
+     * <p>只生成命令文本，不直接改数据；权限校验由命令本身完成（例如改别人的公司会被命令拒绝）。
+     * 这样 AI 能覆盖所有玩家命令，又不会越权。</p>
+     */
+    @Override
+    public JsonObject planCommand(String playerName, String text, JsonObject context) {
+        try {
+            if (offline() || "exchange".equals(mode())) {
+                return null;
+            }
+            String url = buildUrl(settings.aiLegacyPath);
+            if (url == null || !reserveBudget()) {
+                return null;
+            }
+            String player = playerName == null || playerName.isBlank() ? "玩家" : playerName;
+            JsonObject request = new JsonObject();
+            request.addProperty("player", IDENTITY_PLAYER);
+            request.addProperty("uuid", IDENTITY_UUID);
+            request.addProperty("text", "你是 Minecraft 服务器 AIMCmarket 的助手，要代替玩家「" + player
+                    + "」执行一条 /ex 命令（玩家本人权限，禁止 /ex admin 和其它命令）。\n"
+                    + "玩家在游戏里说：「" + text + "」\n"
+                    + "可用命令：\n" + JsonFile.str(context, "commandHelp", "") + "\n"
+                    + "当前数据（JSON）：" + contextText(context) + "\n"
+                    + "本服可交易股票：" + JsonFile.str(context, "stocksLine", "") + "\n"
+                    + "要求：\n"
+                    + "1) 查询就用查询命令：基金→/ex fund list 或 /ex fund info <代码>；自选股票/持仓→/ex stock list 或 /ex stock info <代码或名字>；"
+                    + "流水→/ex history；公司→/ex company info <公司>；银行→/ex bank info；政策→/ex gov status；"
+                    + "价格→/ex price <物品>；行情→/ex board；新闻→/ex news；排行→/ex top。\n"
+                    + "2) 交易/操作就用对应命令：买卖股票 /ex stock buy|sell <代码> <股数>；买卖物品 /ex buy|sell <物品> <数量>；"
+                    + "收购 /ex buyback <物品> [数量]；退货 /ex return <物品> [数量]；基金 /ex fund buy|sell <代码> <金额>；"
+                    + "存取/贷款 /ex bank ...；公司 /ex company ...（只能操作自己当 CEO 的公司，不能改别人的）。\n"
+                    + "3) 常见说法对应：我的基金/基金持仓→/ex fund list；我买了哪些股票/我的持仓→/ex stock list；"
+                    + "我的公司/公司情况→/ex company list 或 /ex company info <公司>；"
+                    + "改公司名→/ex company rename <公司> <新名字>（只有一家公司可省略公司名）；"
+                    + "公司升级→/ex company levelup <公司>；招人→/ex company hire <公司> <人数>；"
+                    + "投资别人公司→/ex company invest <公司> <金额>；"
+                    + "查价格→/ex price <物品>；查行情→/ex board；查新闻→/ex news；查政策→/ex gov status；查银行→/ex bank info。\n"
+                    + "4) 示例：看看我买了哪些股票→{\"command\":\"/ex stock list\"}；我的基金→{\"command\":\"/ex fund list\"}；"
+                    + "公司改名叫铜矿集团→{\"command\":\"/ex company rename 铜矿集团\"}；给我买10股宁德时代→{\"command\":\"/ex stock buy CATL 10\"}；"
+                    + "我最近有什么流水→{\"command\":\"/ex history\"}；把背包里的齿轮收购掉→{\"command\":\"/ex buyback 齿轮\"}。"
+                    + "5) 玩家只是闲聊/要建议、或者信息不够时，command 留空。\n"
+                    + "只输出一个 JSON 对象：{\"command\":\"/ex ...\"}。不要解释、不要 markdown。");
+            long started = System.currentTimeMillis();
+            HttpResponse response = post(url, request.toString(), Math.max(timeoutMs(), 25_000));
+            long elapsed = System.currentTimeMillis() - started;
+            if (response.status != 200) {
+                return null;
+            }
+            JsonObject root = parseObject(response.body);
+            if (root == null || !JsonFile.bool(root, "ok", false)) {
+                return null;
+            }
+            JsonObject data = AiJson.parseLooseObject(JsonFile.str(root, "reply", ""));
+            if (data == null) {
+                Log.warn("[AI] 命令规划回复不是 JSON");
+                return null;
+            }
+            if (!data.has("command")) {
+                data.addProperty("command", "");
+            }
+            Log.info("[AI] 命令规划 " + text + " → " + data + " 用时=" + elapsed + "ms");
+            return data;
+        } catch (IOException | RuntimeException error) {
+            Log.warn("[AI] 命令规划失败：" + describe(error));
+            return null;
+        }
+    }
+
+    /**
      * 一次 AI 调用识别买卖意图 + 物品 id + 估价，避免"关键词直接执行"猜错物品。
      */
     @Override

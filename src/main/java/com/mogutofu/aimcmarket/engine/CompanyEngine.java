@@ -477,6 +477,26 @@ public final class CompanyEngine {
         }
     }
 
+    /** 改公司名（只有 CEO 本人能改）。 */
+    public static ActionResult rename(AimcContext ctx, Account ceo, CompanyStore.Company company, String newName) {
+        if (ctx == null || ceo == null) {
+            return ActionResult.fail("账户还没加载好，稍后再试");
+        }
+        if (company == null) {
+            return ActionResult.fail("找不到公司");
+        }
+        if (!isCeo(ceo, company)) {
+            return ActionResult.fail("只有 CEO 本人能改公司「" + company.name + "」的名字");
+        }
+        try {
+            String old = company.name;
+            ctx.companies.rename(company, newName);
+            return ActionResult.ok("公司已改名：" + old + " → " + company.name);
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            return ActionResult.fail(reason(error));
+        }
+    }
+
     /**
      * 合伙人/投资人入股：把钱投进公司，按估值换股份。
      */

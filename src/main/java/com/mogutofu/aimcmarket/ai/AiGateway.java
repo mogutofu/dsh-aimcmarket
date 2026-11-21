@@ -49,6 +49,14 @@ public interface AiGateway {
     }
 
     /**
+     * 把玩家的话翻译成一条要代替玩家执行的 /ex 命令（只允许玩家权限内的命令）。
+     * 返回 {"command":"/ex ..."}；无法翻译返回 {"command":""} 或 null。
+     */
+    default JsonObject planCommand(String playerName, String text, JsonObject context) {
+        return null;
+    }
+
+    /**
      * 一次 AI 调用判断玩家想买/卖什么：返回
      * {@code {action:"buy|sell|none", quantity, itemName, candidates:[ns:path], keywords:[...], priceCents}}。
      * 失败返回 null。
