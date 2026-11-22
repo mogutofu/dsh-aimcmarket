@@ -136,6 +136,10 @@ public final class AimcContext {
         context.purchases.load();
 
         context.ledger.reanchorIssued();
+        long toppedUp = context.government.ensureMinimumBudget(context.ledger, "系统");
+        if (toppedUp > 0L) {
+            Log.info("政府预算保底补足 " + com.mogutofu.aimcmarket.util.Cents.format(toppedUp) + " 币");
+        }
         Log.info("AIMCmarket 数据加载完成：货币总量 " + com.mogutofu.aimcmarket.util.Cents.format(context.ledger.circulationCents())
                 + " 币，tick=" + context.clock.tick() + "，交易日=" + context.clock.day());
         return context;

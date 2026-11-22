@@ -3794,7 +3794,10 @@ public final class MarketCommand {
             if (!ctx().government.isActive(policy, ctx().tradingDay())) {
                 continue;
             }
-            lines.add(policy.action + " " + policy.paramsString()
+            if (policy.params != null && policy.params.has("rejected")) {
+                continue;
+            }
+            lines.add(policy.actionName() + " " + policy.paramsString()
                     + (policy.expiresDay >= 0 ? "（到第 " + policy.expiresDay + " 交易日）" : ""));
         }
         if (lines.isEmpty()) {
@@ -3812,7 +3815,7 @@ public final class MarketCommand {
         }
         List<String> lines = new ArrayList<>();
         for (var policy : ctx().government.recentPolicies(20)) {
-            lines.add("#" + policy.id + " " + policy.action + " " + policy.paramsString()
+            lines.add("#" + policy.id + " " + policy.actionName() + " " + policy.paramsString()
                     + (policy.reason.isBlank() ? "" : " — " + policy.reason));
         }
         Messages.sendPage(source, lines, 1, 10, "/ex gov history");

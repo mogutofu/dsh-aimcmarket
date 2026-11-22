@@ -801,6 +801,9 @@ public final class DirectCompanyCommands {
             if (policy == null || !ctx.government.isActive(policy, day)) {
                 continue;
             }
+            if (policy.params != null && policy.params.has("rejected")) {
+                continue;
+            }
             lines.add(actionName(policy.action) + " " + policy.paramsString()
                     + (policy.expiresDay >= 0L ? "（到第 " + policy.expiresDay + " 交易日为止）" : ""));
         }

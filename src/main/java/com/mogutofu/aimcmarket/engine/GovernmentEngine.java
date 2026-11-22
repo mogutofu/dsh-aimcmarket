@@ -749,7 +749,15 @@ public final class GovernmentEngine {
         }
         ctx.news.add(headline, text, "policy", now, day, new JsonArray());
         Log.info("政府政策落地：" + action + " " + params + "（" + source + "）");
-        return ActionResult.ok(message, broadcast, headline);
+        // 每条政策都带公告一起播出去，不依赖调用方是否传了 announcement
+        String publicBroadcast = broadcast;
+        if (announcement != null && !announcement.isBlank()) {
+            publicBroadcast = broadcast + "｜公告：" + announcement.trim();
+            if (publicBroadcast.length() > 200) {
+                publicBroadcast = publicBroadcast.substring(0, 200);
+            }
+        }
+        return ActionResult.ok(message, publicBroadcast == null ? "" : publicBroadcast, headline);
     }
 
     /** 预算不足：写一条带 rejected 标记的政策记录，但不广播。 */

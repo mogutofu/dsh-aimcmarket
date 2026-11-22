@@ -28,6 +28,9 @@ public final class GovernmentStore {
             "subsidy", "tariff", "liquidity", "min_wage"
     };
 
+    /** 政府预算保底：80000 币。 */
+    public static final long MIN_BUDGET_CENTS = 8_000_000L;
+
     /** 政策历史里的一条。 */
     public static final class Policy {
         public long id;
@@ -66,8 +69,79 @@ public final class GovernmentStore {
             return policy;
         }
 
+        /** 政策的中文名。 */
+        public String actionName() {
+            String key = action == null ? "none" : action;
+            return switch (key) {
+                case "rate_cut" -> "降息";
+                case "rate_hike" -> "加息";
+                case "welfare" -> "福利发放";
+                case "stimulus" -> "经济刺激";
+                case "austerity" -> "财政紧缩";
+                case "subsidy" -> "产业补贴";
+                case "tariff" -> "关税调整";
+                case "liquidity" -> "流动性支持";
+                case "min_wage" -> "最低工资";
+                case "none" -> "无操作";
+                default -> key;
+            };
+        }
+
         public String paramsString() {
-            return params == null ? "" : params.toString();
+            if (params == null || params.size() == 0) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<String, JsonElement> entry : params.entrySet()) {
+                if (sb.length() > 0) {
+                    sb.append("，");
+                }
+                sb.append(paramLabel(entry.getKey())).append(" ").append(paramValue(entry.getKey(), entry.getValue()));
+            }
+            return sb.toString();
+        }
+
+        private static String paramLabel(String key) {
+            return switch (key) {
+                case "bp" -> "基点";
+                case "policyRate" -> "政策利率";
+                case "amountCents" -> "金额";
+                case "sector" -> "行业";
+                case "multiplier" -> "倍率";
+                case "rate" -> "税率";
+                case "days" -> "持续交易日";
+                case "rejected" -> "未通过";
+                case "ratio" -> "比例";
+                case "mode" -> "方式";
+                default -> key;
+            };
+        }
+
+        private static String paramValue(String key, JsonElement value) {
+            if (value == null || value.isJsonNull()) {
+                return "-";
+            }
+            if ("rejected".equals(key) && value.isJsonPrimitive()) {
+                String code = value.getAsString();
+                return "insufficient_budget".equals(code) ? "预算不足" : code;
+            }
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                double number = value.getAsDouble();
+                if (key.endsWith("Cents")) {
+                    return com.mogutofu.aimcmarket.util.Cents.format(Math.round(number)) + " 币";
+                }
+                if (key.equals("policyRate") || key.equals("rate")) {
+                    return com.mogutofu.aimcmarket.util.Cents.formatPercent(number);
+                }
+                if (number == Math.rint(number)) {
+                    return String.valueOf((long) number);
+                }
+                return String.valueOf(number);
+            }
+            if (value.isJsonPrimitive()) {
+                return value.getAsString();
+            }
+            return value.toString();
         }
     }
 
@@ -232,6 +306,16 @@ public final class GovernmentStore {
         return amountCents > 0L && budgetCents >= amountCents;
     }
 
+    /** 预算保底：低于 80000 币时由净发行账户补足。返回补了多少分（0 = 不用补）。 */
+    public long ensureMinimumBudget(Ledger ledger, String actor) {
+        if (budgetCents >= MIN_BUDGET_CENTS) {
+            return 0L;
+        }
+        long need = MIN_BUDGET_CENTS - budgetCents;
+        ledger.issue(budget, need, "government.budget.floor", actor, "政府预算保底补足");
+        return need;
+    }
+
     // ── 有效利率/税率 ──
 
     public double effectiveTradeTax() {
@@ -324,13 +408,9 @@ public final class GovernmentStore {
 
     // ── 冷却 ──
 
-    /** 每种政策的冷却时间（毫秒）；rate 用交易日判断，这里返回 0。 */
+    /** 每种政策的冷却时间：全部取消，返回 0。 */
     public static long cooldownMs(String action) {
-        return switch (action) {
-            case "welfare", "min_wage" -> 24L * 3_600_000L;
-            case "stimulus", "austerity", "subsidy", "tariff", "liquidity" -> 12L * 3_600_000L;
-            default -> 0L;
-        };
+        return 0L;
     }
 
     public boolean isOnCooldown(String action, long nowMs) {
@@ -350,22 +430,13 @@ public final class GovernmentStore {
         }
     }
 
-    /** 利率方向冷却：同一方向 6 个交易日内只能动一次。 */
+    /** 利率方向冷却：已取消，任何方向随时可调。 */
     public boolean canChangeRate(int direction, long tradingDay) {
-        if (direction == 0) {
-            return false;
-        }
-        if (lastRateDirection != direction) {
-            return true;
-        }
-        return tradingDay - lastRateChangeDay >= 6L;
+        return direction != 0;
     }
 
     public long rateCooldownRemainingDays(int direction, long tradingDay) {
-        if (lastRateDirection != direction) {
-            return 0L;
-        }
-        return Math.max(0L, 6L - (tradingDay - lastRateChangeDay));
+        return 0L;
     }
 
     public void applyRateChange(int direction, long tradingDay) {
