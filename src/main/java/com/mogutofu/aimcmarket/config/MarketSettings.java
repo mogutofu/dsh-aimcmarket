@@ -34,7 +34,7 @@ public final class MarketSettings {
     public long maxOrderValueCents = 500_000L; // 5000 币
     public int maxItemPerOrder = 576;
     public double priceTheta = 0.05;
-    public double maxImpactPerTick = 0.08;
+    public double maxImpactPerTick = 0.20;
     public double priceFloorRatio = 0.25;
     public double priceCeilingRatio = 4.0;
 

@@ -28,10 +28,12 @@ import java.util.Map;
  * <p>纯 Java + Gson，不 import 任何 Minecraft 类，单测可以直接造 {@link AimcContext} 跑。</p>
  */
 public final class PriceEngine {
-    /** 单 tick 冲击绝对上限（任务书 3.3：±0.08）。 */
-    private static final double IMPACT_LIMIT = 0.08;
-    /** 商品冲击系数：impact = +0.02 × 净买入额 / 有效流动性（买推涨、卖压跌）。 */
-    private static final double GOODS_IMPACT_FACTOR = 0.02;
+    /** 单 tick 冲击绝对上限（商品）：卖出砸盘要比物价系数上涨快得多。 */
+    private static final double IMPACT_LIMIT = 0.20;
+    /** 单 tick 冲击上限（股票）。 */
+    private static final double STOCK_IMPACT_LIMIT = 0.08;
+    /** 商品冲击系数：impact = +0.08 × 净买入额 / 有效流动性（买推涨、卖压跌）。 */
+    private static final double GOODS_IMPACT_FACTOR = 0.08;
     /** 股票冲击系数：与商品同系数，用流通市值折算的流动性。 */
     private static final double STOCK_IMPACT_FACTOR = 0.02;
     /** 商品价格兜底夹取比例（配置坏掉时用）。 */
@@ -97,7 +99,8 @@ public final class PriceEngine {
                 long netBuy = impacts.getOrDefault(item.id, 0L);
                 double impact = effectiveLiquidity <= 0.0
                         ? 0.0
-                        : clampImpact(GOODS_IMPACT_FACTOR * (double) netBuy / effectiveLiquidity, settings);
+                        : clampImpact(GOODS_IMPACT_FACTOR * (double) netBuy / effectiveLiquidity, settings,
+                                IMPACT_LIMIT);
 
                 double sigma = safeNonNegative(item.volatility);
                 double drift = theta * (Math.log(base) - Math.log(current))
@@ -230,17 +233,18 @@ public final class PriceEngine {
         if (!Double.isFinite(liquidity) || liquidity <= 0.0) {
             return 0.0;
         }
-        return clampImpact(STOCK_IMPACT_FACTOR * (double) netBuyValueCents / liquidity, settings);
+        return clampImpact(STOCK_IMPACT_FACTOR * (double) netBuyValueCents / liquidity, settings,
+                STOCK_IMPACT_LIMIT);
     }
 
-    /** 冲击夹取：默认 ±0.08；管理员把 {@code maxImpactPerTick} 调小则更小，但不会超过 8%。 */
-    private static double clampImpact(double rawImpact, MarketSettings settings) {
+    /** 冲击夹取：商品默认 ±0.20、股票 ±0.08；管理员把 {@code maxImpactPerTick} 调小则更小。 */
+    private static double clampImpact(double rawImpact, MarketSettings settings, double maxLimit) {
         if (!Double.isFinite(rawImpact)) {
             return 0.0;
         }
-        double limit = IMPACT_LIMIT;
+        double limit = maxLimit;
         if (settings != null && Double.isFinite(settings.maxImpactPerTick)) {
-            limit = Cents.clampDouble(settings.maxImpactPerTick, 0.0, IMPACT_LIMIT);
+            limit = Cents.clampDouble(settings.maxImpactPerTick, 0.0, maxLimit);
         }
         return Cents.clampDouble(rawImpact, -limit, limit);
     }
