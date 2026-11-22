@@ -104,8 +104,14 @@ public final class PriceEngine {
                 double impact = Double.isFinite(rawImpact) ? rawImpact : 0.0;
 
                 double sigma = safeNonNegative(item.volatility);
-                double drift = theta * (Math.log(base) - Math.log(current))
-                        + sigma * ctx.random.nextGaussian()
+                double noise = sigma * ctx.random.nextGaussian();
+                // 净卖出期间：关掉均值回归，噪声也强制取负，保证这一拍只会更低不会反弹
+                double reversion = netBuy < 0L ? 0.0 : theta * (Math.log(base) - Math.log(current));
+                if (netBuy < 0L) {
+                    noise = -Math.abs(noise);
+                }
+                double drift = reversion
+                        + noise
                         + impact;
                 double eventMultiplier = safeEventMultiplier(ctx.market.eventMultiplier(item.id));
 
