@@ -104,7 +104,7 @@ public final class MarketSettings {
         aiPlayerMinIntervalMs = Math.max(0L, aiPlayerMinIntervalMs);
         marketTickMinutes = Cents.clampInt(marketTickMinutes, 1, 1440);
         tradingDayMinutes = Cents.clampInt(tradingDayMinutes, 1, 10_080);
-        askSpread = Cents.clampDouble(askSpread, 0.0, 1.0);
+        askSpread = Cents.clampDouble(askSpread, 0.0, 5.0);
         bidRatio = Cents.clampDouble(bidRatio, 0.01, 1.0);
         maxOrderValueCents = Math.max(100L, maxOrderValueCents);
         maxItemPerOrder = Cents.clampInt(maxItemPerOrder, 1, 2304);

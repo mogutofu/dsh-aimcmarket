@@ -71,7 +71,7 @@ public final class MarketConfig {
         b.comment("市场时钟与价格参数").push("market");
         MARKET_TICK_MINUTES = b.comment("市场 tick 间隔（现实分钟）").defineInRange("tickMinutes", 5, 1, 1440);
         TRADING_DAY_MINUTES = b.comment("一个交易日 = 多少现实分钟（财报/分红/到期用它）").defineInRange("tradingDayMinutes", 60, 1, 10080);
-        ASK_SPREAD = b.comment("买价 = 现价 × (1 + askSpread)").defineInRange("askSpread", 0.02, 0.0, 1.0);
+        ASK_SPREAD = b.comment("买价 = 现价 × (1 + askSpread)").defineInRange("askSpread", 0.02, 0.0, 5.0);
         BID_RATIO = b.comment("回收价 = 现价 × bidRatio").defineInRange("bidRatio", 0.60, 0.01, 1.0);
         MAX_ORDER_VALUE = b.comment("单笔订单上限（分，5000 币 = 500000）").defineInRange("maxOrderValue", 500_000L, 100L, 100_000_000L);
         b.pop();
