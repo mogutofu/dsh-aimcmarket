@@ -15,6 +15,8 @@ import com.mogutofu.aimcmarket.util.Log;
  * 股票不参与缩放（现实股票按真实价、游戏股票按自己的引擎走）。</p>
  */
 public final class MarketPricing {
+    /** 人均货币只统计财富排行前几名。 */
+    private static final int TOP_PLAYERS = 3;
     /** 人均货币基准：1000000 币。人均低于它时系数固定 1.0。 */
     public static final long REFERENCE_AVG_CENTS = 100_000_000L;
     /** 弹性：人均货币涨 10 倍，物价涨 10^ELASTICITY 倍。 */
@@ -37,7 +39,7 @@ public final class MarketPricing {
     private MarketPricing() {
     }
 
-    /** 当前物价系数（>=1）。 */
+    /** 当前物价系数（>=1）。人均货币只统计财富排行前 3 名。 */
     public static double scale(AimcContext ctx) {
         if (ctx == null || ctx.accounts == null) {
             return 1.0;
@@ -47,8 +49,7 @@ public final class MarketPricing {
         try {
             for (Account account : ctx.accounts.all()) {
                 players++;
-                long wealth = account.balanceCents() + account.bank.totalDepositsCents();
-                total += Math.max(0L, Math.min(wealth, CAP_PER_PLAYER_CENTS));
+                total += Math.max(0L, account.balanceCents() + account.bank.totalDepositsCents());
             }
         } catch (RuntimeException error) {
             Log.warn("计算物价系数失败，按 1.0 处理：" + error.getMessage());
@@ -58,7 +59,7 @@ public final class MarketPricing {
         if (players <= 0 || total <= 0L || players < 3 || total < MIN_TOTAL_CIRCULATION_CENTS) {
             return 1.0;
         }
-        double average = (double) total / (double) players;
+        double average = topAverageWealth(ctx);
         if (average <= REFERENCE_AVG_CENTS) {
             return 1.0;
         }
@@ -69,6 +70,28 @@ public final class MarketPricing {
         }
         double target = Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
         return smooth(target);
+    }
+
+    /** 财富排行前 3 名的平均货币（分，每人先按上限截断）；不足 3 人按实际人数平均。 */
+    public static double topAverageWealth(AimcContext ctx) {
+        if (ctx == null || ctx.accounts == null) {
+            return 0.0;
+        }
+        java.util.List<Long> wealths = new java.util.ArrayList<>();
+        for (Account account : ctx.accounts.all()) {
+            long wealth = account.balanceCents() + account.bank.totalDepositsCents();
+            wealths.add(Math.max(0L, Math.min(wealth, CAP_PER_PLAYER_CENTS)));
+        }
+        if (wealths.isEmpty()) {
+            return 0.0;
+        }
+        wealths.sort(java.util.Comparator.reverseOrder());
+        int take = Math.min(TOP_PLAYERS, wealths.size());
+        long sum = 0L;
+        for (int i = 0; i < take; i++) {
+            sum = Math.addExact(sum, wealths.get(i));
+        }
+        return (double) sum / (double) take;
     }
 
     /** 把目标系数按时间做指数平滑，避免人均货币一变动物价就跳。 */
@@ -109,23 +132,13 @@ public final class MarketPricing {
     /** 给玩家看的说明（/ex 价格、/ex admin stats、AI 上下文用）。 */
     public static String describe(AimcContext ctx) {
         double scale = scale(ctx);
-        return String.format(java.util.Locale.ROOT, "物价系数 x%.2f（人均货币 %.2f 币，基准 %d 币）",
-                scale, cappedAverageWealth(ctx) / 100.0, REFERENCE_AVG_CENTS / 100L);
+        return String.format(java.util.Locale.ROOT, "物价系数 x%.2f（前 %d 名人均 %.2f 币，基准 %d 币）",
+                scale, TOP_PLAYERS, cappedAverageWealth(ctx) / 100.0, REFERENCE_AVG_CENTS / 100L);
     }
 
-    /** 服务器人均货币（分，按单人上限截断，和系数算法一致）。 */
+    /** 前 N 名玩家的平均货币（分，按单人上限截断，和系数算法一致）。 */
     public static double cappedAverageWealth(AimcContext ctx) {
-        if (ctx == null || ctx.accounts == null) {
-            return 0.0;
-        }
-        int players = 0;
-        long total = 0L;
-        for (Account account : ctx.accounts.all()) {
-            players++;
-            long wealth = account.balanceCents() + account.bank.totalDepositsCents();
-            total += Math.max(0L, Math.min(wealth, CAP_PER_PLAYER_CENTS));
-        }
-        return players <= 0 ? 0.0 : (double) total / (double) players;
+        return topAverageWealth(ctx);
     }
 
     /** 服务器人均货币（分），统计口径：现金 + 活期/定期存款。 */
