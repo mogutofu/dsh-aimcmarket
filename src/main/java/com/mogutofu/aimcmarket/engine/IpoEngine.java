@@ -96,8 +96,16 @@ public final class IpoEngine {
                 return false;
             }
             long age = day - company.createdDay;
-            if (age < MIN_TRADING_DAYS) {
-                appendWhyNot(whyNot, "公司成立不足 " + MIN_TRADING_DAYS + " 个交易日（当前 "
+            boolean oldEnough;
+            if (company.createdMs > 0L) {
+                // 现实时间口径：满 1 小时即可（默认 1 交易日 = 60 分钟）
+                long needMs = Math.max(1L, MIN_TRADING_DAYS) * 60L * 60_000L;
+                oldEnough = System.currentTimeMillis() - company.createdMs >= needMs;
+            } else {
+                oldEnough = age >= MIN_TRADING_DAYS;
+            }
+            if (!oldEnough) {
+                appendWhyNot(whyNot, "公司成立不足 1 小时（当前 "
                         + Math.max(0L, age) + " 个交易日）");
                 return false;
             }
@@ -400,14 +408,11 @@ public final class IpoEngine {
             appendCondition(sb, company.level >= MIN_LEVEL,
                     "等级 ≥ " + MIN_LEVEL + "（当前 " + company.level + " 级）");
             long age = Math.max(0L, day - company.createdDay);
-            appendCondition(sb, age >= MIN_TRADING_DAYS,
-                    "成立 ≥ " + MIN_TRADING_DAYS + " 个交易日（当前 " + age + " 个交易日）");
-            long averageProfit = company.averageDailyProfit((int) MIN_TRADING_DAYS);
-            appendCondition(sb, averageProfit > 0L,
-                    "最近 7 交易日平均日净利 > 0（当前 " + Cents.format(averageProfit) + " 币）");
-            appendCondition(sb, company.valuationCents >= MIN_VALUATION_CENTS,
-                    "估值 ≥ " + Cents.format(MIN_VALUATION_CENTS) + " 币（当前 "
-                            + Cents.format(company.valuationCents) + " 币）");
+            boolean oldEnough = company.createdMs > 0L
+                    ? System.currentTimeMillis() - company.createdMs >= Math.max(1L, MIN_TRADING_DAYS) * 60L * 60_000L
+                    : age >= MIN_TRADING_DAYS;
+            appendCondition(sb, oldEnough,
+                    "成立 ≥ 1 小时（当前 " + Math.max(0L, age) + " 个交易日）");
             appendCondition(sb, stakeAtLeast(ceoShares, total, MIN_CEO_STAKE),
                     "CEO 持股 ≥ " + percentOf(MIN_CEO_STAKE) + "（当前 "
                             + percentOf(stakeRatio(ceoShares, total)) + "）");

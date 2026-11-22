@@ -101,6 +101,8 @@ public final class CompanyStore {
         public int employees;
         public double reputation = 1.0;
         public long createdDay;
+        /** 现实时间创建时刻（毫秒）；老数据为 0，按 createdDay 兜底。 */
+        public long createdMs;
         public long lastSettleDay = -1L;
         public long lastDividendDay = -1L;
         /** 分红比例 0-0.8。 */
@@ -191,6 +193,7 @@ public final class CompanyStore {
             json.addProperty("employees", employees);
             json.addProperty("reputation", reputation);
             json.addProperty("createdDay", createdDay);
+            json.addProperty("createdMs", createdMs);
             json.addProperty("lastSettleDay", lastSettleDay);
             json.addProperty("lastDividendDay", lastDividendDay);
             json.addProperty("dividendRatio", dividendRatio);
@@ -238,6 +241,7 @@ public final class CompanyStore {
             company.employees = Math.max(0, JsonFile.intVal(json, "employees", 0));
             company.reputation = Cents.clampDouble(JsonFile.dbl(json, "reputation", 1.0), 0.6, 1.4);
             company.createdDay = JsonFile.lng(json, "createdDay", 0L);
+            company.createdMs = JsonFile.lng(json, "createdMs", 0L);
             company.lastSettleDay = JsonFile.lng(json, "lastSettleDay", -1L);
             company.lastDividendDay = JsonFile.lng(json, "lastDividendDay", -1L);
             company.dividendRatio = Cents.clampDouble(JsonFile.dbl(json, "dividendRatio", 0.0), 0.0, 0.8);
@@ -451,6 +455,7 @@ public final class CompanyStore {
         company.ceoUuid = ceo.uuid;
         company.sector = sectorCode;
         company.createdDay = tradingDay;
+        company.createdMs = System.currentTimeMillis();
         company.sharesTotal = settings.companySharesTotal;
         company.holders.put(ceo.uuid, company.sharesTotal);
         companies.put(id, company);
