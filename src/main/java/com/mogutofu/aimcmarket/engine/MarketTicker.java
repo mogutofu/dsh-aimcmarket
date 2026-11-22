@@ -149,11 +149,16 @@ public final class MarketTicker {
         if (ctx == null || !NewsEngine.dueForNews(ctx, nowMs)) {
             return;
         }
-        // 没人在线不生成（省 token），且每小时最多一条
+        // 没人在线不生成（省 token）；生成时机对齐整点，每个整点最多一条
         if (ctx.onlineAccounts == null || ctx.onlineAccounts.isEmpty()) {
             return;
         }
-        if (nowMs - lastNewsGeneratedMs < NEWS_POLICY_INTERVAL_MS) {
+        long hourStart = nowMs - (nowMs % NEWS_POLICY_INTERVAL_MS);
+        if (lastNewsGeneratedMs >= hourStart) {
+            return;
+        }
+        // 只认整点后 5 分钟这个窗口，错过就等下一个整点
+        if (nowMs - hourStart > 300_000L) {
             return;
         }
         if (ctx.newsInFlight) {
@@ -199,11 +204,16 @@ public final class MarketTicker {
         if (ctx == null || !ctx.settings.aiGovernmentEnabled || ctx.govInFlight) {
             return;
         }
-        // 没人在线不生成（省 token），且每小时最多一次
+        // 没人在线不生成（省 token）；生成时机对齐整点，每个整点最多一次
         if (ctx.onlineAccounts == null || ctx.onlineAccounts.isEmpty()) {
             return;
         }
-        if (nowMs - lastPolicyGeneratedMs < NEWS_POLICY_INTERVAL_MS) {
+        long hourStart = nowMs - (nowMs % NEWS_POLICY_INTERVAL_MS);
+        if (lastPolicyGeneratedMs >= hourStart) {
+            return;
+        }
+        // 只认整点后 5 分钟这个窗口，错过就等下一个整点
+        if (nowMs - hourStart > 300_000L) {
             return;
         }
         if (!GovernmentEngine.shouldAskAi(ctx, nowMs)) {
