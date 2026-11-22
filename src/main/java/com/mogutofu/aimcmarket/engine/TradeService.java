@@ -64,7 +64,10 @@ public final class TradeService {
                 spread = Cents.clampDouble(ctx.settings.askSpread, 0.0, 5.0);
             }
             long raw = ctx.market.askRawCents(item.id, spread);
-            return MarketPricing.priceCents(ctx, applyPolicyMultiplier(ctx, item.id, raw));
+            long price = MarketPricing.priceCents(ctx, applyPolicyMultiplier(ctx, item.id, raw));
+            // 买入价不低于基准价的 500%（随物价系数一起缩放）
+            long floor = MarketPricing.priceCents(ctx, Math.multiplyExact(Math.max(1L, item.basePriceCents), 5L));
+            return Math.max(price, floor);
         } catch (RuntimeException error) {
             Log.warn("计算买价失败（" + itemId + "）", error);
             return 1L;

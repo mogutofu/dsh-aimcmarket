@@ -60,10 +60,10 @@ class FuturesOptionsTest {
         assertEquals(ctx.tradingDay() + 7L, position.expiryDay, "7 交易日合约应在第 7 个交易日到期");
         assertTrue(ctx.ledger.isBalanced(), "期货开仓四腿记账后账本应平衡");
 
-        // 价格翻倍 → 盯市：lastMarkPriceCents 与 marginCents 都应变化
+        // 价格拉到基准价 10 倍（高于买价 500% 保底）→ 盯市：lastMarkPriceCents 与 marginCents 都应变化
         long entry = position.entryPriceCents;
         long price = ctx.market.price(IRON);
-        ctx.market.setPrice(IRON, price * 2L);
+        ctx.market.setPrice(IRON, price * 10L);
         FuturesEngine.onMarketTick(ctx);
         assertNotEquals(entry, position.lastMarkPriceCents, "盯市后 lastMarkPriceCents 应变化");
         assertTrue(position.marginCents > position.initialMarginCents,

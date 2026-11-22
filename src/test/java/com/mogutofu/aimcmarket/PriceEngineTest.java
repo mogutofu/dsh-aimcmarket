@@ -66,6 +66,9 @@ class PriceEngineTest {
         assertNotNull(item, "铁锭应在商品目录里");
         long base = item.basePriceCents;
 
+        // 默认 theta 很慢（现实 72 小时口径），这里临时调高，专门验证回归方向
+        ctx.settings.priceTheta = 0.2;
+
         // 3 倍基准价：300 tick 后应明显回落
         ctx.market.setPrice(item.id, base * 3L);
         long high = ctx.market.price(item.id);
