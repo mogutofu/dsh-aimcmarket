@@ -30,15 +30,12 @@ class PriceEngineTest {
         return AimcContext.load(tempDir, tempDir.resolve("config"), MarketSettings.defaults(), NOW_MS, SEED);
     }
 
-    /** 断言全部启用商品的当前价格都在 [base×0.25, base×4] 内且为正。 */
+    /** 断言全部启用商品的当前价格都在 [1 分, base×4] 内（卖出冲击不设下限，只保底不为 0）。 */
     private static void assertAllPricesInBounds(AimcContext ctx, String stage) {
         for (MarketStore.CatalogItem item : ctx.market.enabledItems()) {
             long price = ctx.market.price(item.id);
-            long floor = Math.max(1L, (long) Math.ceil(item.basePriceCents * 0.25));
             long ceiling = item.basePriceCents * 4L;
             assertTrue(price > 0L, stage + "：" + item.id + " 价格必须为正，实际 " + price);
-            assertTrue(price >= floor, stage + "：" + item.id + " 价格低于下边界，实际 "
-                    + price + " < " + floor + "（基准价 " + item.basePriceCents + "）");
             assertTrue(price <= ceiling, stage + "：" + item.id + " 价格高于上边界，实际 "
                     + price + " > " + ceiling + "（基准价 " + item.basePriceCents + "）");
         }
@@ -92,7 +89,7 @@ class PriceEngineTest {
     }
 
     @Test
-    void impactPushesPriceUpWithinOneTickAndIsCapped() {
+    void impactPushesPriceUpWithinOneTick() {
         AimcContext ctx = newContext();
         // 挑波动率最小的商品，把随机噪声压到最小，这样"价格上涨"是确定性的方向断言。
         MarketStore.CatalogItem target = null;
@@ -105,15 +102,13 @@ class PriceEngineTest {
         ctx.market.setPrice(target.id, target.basePriceCents);
         long before = ctx.market.price(target.id);
 
-        // 净买入额 = 流动性 ×10，冲击会被夹在单 tick ±8% 内。
+        // 净买入额 = 流动性 ×10；冲击不设上限，只做方向断言。
         ctx.market.addImpact(target.id, target.liquidity * 10L);
         PriceEngine.tickPrices(ctx);
         long after = ctx.market.price(target.id);
 
         assertTrue(after > before, "净买入冲击后价格应上升：" + before + " → " + after
                 + "（" + target.id + "，波动率 " + target.volatility + "）");
-        assertTrue(after <= Math.round(before * 1.25),
-                "单 tick 涨幅不应过大（宽松上限 25%）：" + before + " → " + after);
         assertTrue(ctx.market.price(target.id) > 0L, "冲击后价格仍必须为正");
     }
 

@@ -124,7 +124,7 @@ public final class SelfTest {
             }
             for (MarketStore.CatalogItem item : ctx.market.enabledItems()) {
                 long price = ctx.market.price(item.id);
-                long floor = Math.max(1L, item.basePriceCents / 4L);
+                long floor = 1L;
                 long ceiling = Math.max(floor, item.basePriceCents * 4L);
                 check(price >= floor && price <= ceiling,
                         item.nameZh + " 价格越界：" + price + " 不在 [" + floor + "," + ceiling + "]");
@@ -154,7 +154,7 @@ public final class SelfTest {
             PriceEngine.tickPrices(ctx);
             long after = ctx.market.price(item.id);
             check(after > before, "净买入冲击应该抬高价格（" + before + " → " + after + "）");
-            check(after >= Math.max(1L, item.basePriceCents / 4L), "冲击后价格低于下限");
+            check(after > 0L, "冲击后价格不能变成 0");
         });
         runner.test("股票价格引擎 100 tick 不越界", () -> {
             for (int i = 0; i < 100; i++) {

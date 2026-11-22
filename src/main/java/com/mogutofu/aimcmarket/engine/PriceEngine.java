@@ -97,10 +97,11 @@ public final class PriceEngine {
                 // 有效流动性 = 条目流动性 × 政策倍数（流动性支持会摊薄冲击）。
                 double effectiveLiquidity = (double) Math.max(1L, item.liquidity) * liquidityMultiplier;
                 long netBuy = impacts.getOrDefault(item.id, 0L);
-                double impact = effectiveLiquidity <= 0.0
+                // 卖出砸盘不设上限：只防 NaN/Inf，价格本身由下面的 [1 分, 上限] 兜底
+                double rawImpact = effectiveLiquidity <= 0.0
                         ? 0.0
-                        : clampImpact(GOODS_IMPACT_FACTOR * (double) netBuy / effectiveLiquidity, settings,
-                                IMPACT_LIMIT);
+                        : GOODS_IMPACT_FACTOR * (double) netBuy / effectiveLiquidity;
+                double impact = Double.isFinite(rawImpact) ? rawImpact : 0.0;
 
                 double sigma = safeNonNegative(item.volatility);
                 double drift = theta * (Math.log(base) - Math.log(current))
@@ -109,7 +110,8 @@ public final class PriceEngine {
                 double eventMultiplier = safeEventMultiplier(ctx.market.eventMultiplier(item.id));
 
                 double next = (double) current * Math.exp(drift) * eventMultiplier;
-                long cents = clampCents(next, base * floorRatio, base * ceilingRatio);
+                // 下限 1 分（不归零），上限仍是基准价的若干倍
+                long cents = clampCents(next, 1L, base * ceilingRatio);
                 if (cents < 0L) {
                     // NaN/Inf：保留原价，宁可价格不动也不写坏数据。
                     Log.warn("商品价格算出非法值，保留原价：" + item.id);
