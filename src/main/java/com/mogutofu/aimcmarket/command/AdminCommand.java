@@ -80,6 +80,7 @@ public final class AdminCommand {
         admin.then(Commands.literal("save").executes(AdminCommand::save));
         admin.then(Commands.literal("syncstocks").executes(AdminCommand::syncStocks));
         admin.then(Commands.literal("stats").executes(AdminCommand::stats));
+        admin.then(Commands.literal("ledgerfix").executes(AdminCommand::ledgerFix));
         admin.then(Commands.literal("selftest").executes(AdminCommand::selfTest));
         admin.then(Commands.literal("cmdtree").executes(AdminCommand::cmdTree));
         admin.then(Commands.literal("gov")
@@ -280,6 +281,28 @@ public final class AdminCommand {
             return 0;
         }
         Messages.sendOk(source, "[代 " + target.name + "] " + result.message);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** {@code /ex admin ledgerfix}：只补账本调整分录，让重放结果与真实余额一致。 */
+    private static int ledgerFix(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        try {
+            int fixed = ctx().ledger.reconcileSilently(source.getTextName());
+            if (fixed < 0) {
+                Messages.sendFail(source, "读账本失败，没有修改");
+                return 0;
+            }
+            ctx().saveAll();
+            Messages.sendOk(source, fixed == 0
+                    ? "账本本来就平，无需修正"
+                    : "已补 " + fixed + " 条调整分录，重放核对现在应一致");
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "修正失败：" + error.getMessage());
+        }
         return Command.SINGLE_SUCCESS;
     }
 

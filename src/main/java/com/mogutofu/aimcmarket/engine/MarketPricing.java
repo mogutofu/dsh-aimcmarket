@@ -17,8 +17,8 @@ import com.mogutofu.aimcmarket.util.Log;
 public final class MarketPricing {
     /** 人均货币基准：2000 币。低于它时系数固定 1.0。 */
     public static final long REFERENCE_AVG_CENTS = 200_000L;
-    /** 弹性：人均货币涨 10 倍，物价涨 10^0.8 ≈ 6.3 倍。 */
-    public static final double ELASTICITY = 0.8;
+    /** 弹性：人均货币涨 10 倍，物价涨 10^ELASTICITY 倍。 */
+    public static final double ELASTICITY = 1.0;
     /** 系数上下限。 */
     public static final double MIN_SCALE = 1.0;
     public static final double MAX_SCALE = 50.0;
@@ -26,6 +26,13 @@ public final class MarketPricing {
     private static final long CAP_PER_PLAYER_CENTS = 20_000_000L;
     /** 总货币低于这个数不启用缩放（新服/测试环境）。 */
     private static final long MIN_TOTAL_CIRCULATION_CENTS = 5_000_000L;
+    /** 平滑时间常数：30 分钟。目标系数变化后，实际系数按这个速度慢慢靠过去。 */
+    private static final double SMOOTHING_TAU_MS = 30.0 * 60_000.0;
+    /** 单次最多变化的比例（防止长时间停机后一次性跳变）。 */
+    private static final double MAX_STEP_RATIO = 0.10;
+    /** 平滑后的系数（跨调用保留，<0 表示还没初始化）。 */
+    private static volatile double smoothedScale = -1.0;
+    private static volatile long lastScaleUpdateMs = 0L;
 
     private MarketPricing() {
     }
@@ -60,7 +67,31 @@ public final class MarketPricing {
         if (!Double.isFinite(value)) {
             return MAX_SCALE;
         }
-        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
+        double target = Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
+        return smooth(target);
+    }
+
+    /** 把目标系数按时间做指数平滑，避免人均货币一变动物价就跳。 */
+    private static double smooth(double target) {
+        long now = System.currentTimeMillis();
+        double current = smoothedScale;
+        if (current < 0.0) {
+            smoothedScale = target;
+            lastScaleUpdateMs = now;
+            return target;
+        }
+        long elapsed = Math.max(0L, now - lastScaleUpdateMs);
+        lastScaleUpdateMs = now;
+        if (elapsed <= 0L) {
+            return current;
+        }
+        double alpha = 1.0 - Math.exp(-(double) elapsed / SMOOTHING_TAU_MS);
+        double next = current + (target - current) * alpha;
+        double maxStep = current * MAX_STEP_RATIO;
+        next = Math.max(current - maxStep, Math.min(current + maxStep, next));
+        next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, next));
+        smoothedScale = next;
+        return next;
     }
 
     /** 把基础价（分）换算成当前市场价（分）。 */

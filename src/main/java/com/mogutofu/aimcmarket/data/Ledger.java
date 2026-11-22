@@ -251,55 +251,48 @@ public final class Ledger {
     // ── 对账 ──
 
     /**
+     * 对账修正：只往 ledger.jsonl 追加调整分录，让「重放结果」和内存里的真实余额对齐。
+     *
+     * <p>不动任何余额、不改净发行计数器——只是把历史上因为崩溃/手工改动丢掉的差额补成一条账。
+     * 每条调整分录都是「账户 +delta / sys:issued -delta」，加起来为 0，恒等式不受影响。</p>
+     *
+     * @return 修正的账户数；读账本失败返回 -1
+     */
+    public int reconcileSilently(String actor) {
+        Map<String, Long> replayed = new LinkedHashMap<>();
+        int[] badLines = {0};
+        if (replayInto(replayed, badLines) == null) {
+            return -1;
+        }
+        int fixed = 0;
+        for (BalanceAccount account : accounts.values()) {
+            long expected = replayed.getOrDefault(account.accountId(), 0L);
+            long delta = account.balanceCents() - expected;
+            if (delta == 0L) {
+                continue;
+            }
+            seq++;
+            append("ledger.reconcile", actor, "对账修正：只补账本，不动余额", new Leg[]{
+                    leg(account, delta), leg(issued, -delta)});
+            fixed++;
+        }
+        return fixed;
+    }
+
+    /**
      * 用 ledger.jsonl 重放，逐账户核对余额。
      *
      * @return 对不上的账户数（0 = 完全一致）；同时返回重放出来的净发行额
      */
     public ReplayResult replayAndVerify() {
         Map<String, Long> replayed = new LinkedHashMap<>();
-        long replayedIssued = 0L;
-        int badLines = 0;
-        if (Files.isRegularFile(file)) {
-            try {
-                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                    if (line == null || line.isBlank()) {
-                        continue;
-                    }
-                    JsonObject obj;
-                    try {
-                        JsonElement parsed = JsonParser.parseString(line);
-                        obj = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
-                    } catch (RuntimeException error) {
-                        obj = null;
-                    }
-                    if (obj == null) {
-                        badLines++;
-                        continue;
-                    }
-                    long sum = 0L;
-                    for (JsonElement legElement : JsonFile.array(obj, "legs")) {
-                        if (!legElement.isJsonArray() || legElement.getAsJsonArray().size() < 2) {
-                            badLines++;
-                            continue;
-                        }
-                        JsonArray leg = legElement.getAsJsonArray();
-                        String id = leg.get(0).getAsString();
-                        long delta = leg.get(1).getAsLong();
-                        sum = Math.addExact(sum, delta);
-                        if (ISSUED.equals(id)) {
-                            replayedIssued = Math.addExact(replayedIssued, delta);
-                        } else {
-                            replayed.put(id, Math.addExact(replayed.getOrDefault(id, 0L), delta));
-                        }
-                    }
-                    if (sum != 0L) {
-                        badLines++;
-                    }
-                }
-            } catch (IOException error) {
-                return new ReplayResult(-1, 0L, 0L, 1, "读账本失败：" + error.getMessage());
-            }
+        int[] badCounter = {0};
+        Long replayedIssuedValue = replayInto(replayed, badCounter);
+        if (replayedIssuedValue == null) {
+            return new ReplayResult(-1, 0L, 0L, 1, "读账本失败");
         }
+        long replayedIssued = replayedIssuedValue;
+        int badLines = badCounter[0];
         int mismatches = badLines;
         StringBuilder detail = new StringBuilder();
         for (BalanceAccount account : accounts.values()) {
@@ -318,6 +311,57 @@ public final class Ledger {
             detail.append("净发行 账本=").append(replayedIssued).append(" 实际=").append(issuedCents).append("；");
         }
         return new ReplayResult(mismatches, issuedCents, replayedIssued, badLines, detail.toString());
+    }
+
+    /**
+     * 读账本把每个账户的净额累加到 {@code replayed}，返回净发行额；IO 失败返回 {@code null}。
+     *
+     * <p>解析不了的行计入 {@code badLines[0]}，不影响其余行。</p>
+     */
+    private Long replayInto(Map<String, Long> replayed, int[] badLines) {
+        long replayedIssued = 0L;
+        if (Files.isRegularFile(file)) {
+            try {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    if (line == null || line.isBlank()) {
+                        continue;
+                    }
+                    JsonObject obj;
+                    try {
+                        JsonElement parsed = JsonParser.parseString(line);
+                        obj = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+                    } catch (RuntimeException error) {
+                        obj = null;
+                    }
+                    if (obj == null) {
+                        badLines[0]++;
+                        continue;
+                    }
+                    long sum = 0L;
+                    for (JsonElement legElement : JsonFile.array(obj, "legs")) {
+                        if (!legElement.isJsonArray() || legElement.getAsJsonArray().size() < 2) {
+                            badLines[0]++;
+                            continue;
+                        }
+                        JsonArray leg = legElement.getAsJsonArray();
+                        String id = leg.get(0).getAsString();
+                        long delta = leg.get(1).getAsLong();
+                        sum = Math.addExact(sum, delta);
+                        if (ISSUED.equals(id)) {
+                            replayedIssued = Math.addExact(replayedIssued, delta);
+                        } else {
+                            replayed.put(id, Math.addExact(replayed.getOrDefault(id, 0L), delta));
+                        }
+                    }
+                    if (sum != 0L) {
+                        badLines[0]++;
+                    }
+                }
+            } catch (IOException error) {
+                return null;
+            }
+        }
+        return replayedIssued;
     }
 
     /** 重放核对结果。 */
