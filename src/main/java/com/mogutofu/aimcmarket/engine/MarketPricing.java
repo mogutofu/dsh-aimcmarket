@@ -24,8 +24,6 @@ public final class MarketPricing {
     /** 系数上下限。 */
     public static final double MIN_SCALE = 1.0;
     public static final double MAX_SCALE = 50.0;
-    /** 每人最多贡献多少"货币"到人均里，避免单个巨富把全服物价拉爆。 */
-    private static final long CAP_PER_PLAYER_CENTS = 20_000_000L;
     /** 总货币低于这个数不启用缩放（新服/测试环境）。 */
     private static final long MIN_TOTAL_CIRCULATION_CENTS = 5_000_000L;
     /** 平滑时间常数：30 分钟。目标系数变化后，实际系数按这个速度慢慢靠过去。 */
@@ -80,7 +78,7 @@ public final class MarketPricing {
         java.util.List<Long> wealths = new java.util.ArrayList<>();
         for (Account account : ctx.accounts.all()) {
             long wealth = account.balanceCents() + account.bank.totalDepositsCents();
-            wealths.add(Math.max(0L, Math.min(wealth, CAP_PER_PLAYER_CENTS)));
+            wealths.add(Math.max(0L, wealth));
         }
         if (wealths.isEmpty()) {
             return 0.0;
