@@ -48,13 +48,49 @@ public final class CompanyStore {
         SECTOR_BASE_REVENUE.put("aerospace", 72_000L);    // 720 币/交易日
     }
 
-    /** 公司等级 1-5 的升级门槛：累计营收（分）与升级费（分）。 */
-    public static final long[] LEVEL_REVENUE_REQUIRED = {0L, 1_000_000L, 3_000_000L, 8_000_000L, 20_000_000L};
-    public static final long[] LEVEL_UP_FEE = {0L, 200_000L, 500_000L, 1_200_000L, 3_000_000L};
+    /** 公司最高等级。 */
+    public static final int MAX_LEVEL = 50;
+    /** 从 1 级升到 50 级，累计升级费合计 1000 亿币（= 1e13 分）。 */
+    public static final long TOTAL_LEVEL_FEE_CENTS = 10_000_000_000_000L;
+    /** 公司等级 1-50 的升级门槛：累计营收（分）与升级费（分），按几何增长自动生成。 */
+    public static final long[] LEVEL_REVENUE_REQUIRED = buildRevenueRequired();
+    public static final long[] LEVEL_UP_FEE = buildLevelUpFees();
+
+    /** 生成 1-50 级的升级费：首级 2000 币，几何增长，累计正好 1000 亿币。 */
+    private static long[] buildLevelUpFees() {
+        long[] fees = new long[MAX_LEVEL];
+        double first = 200_000.0;
+        double target = (double) TOTAL_LEVEL_FEE_CENTS;
+        double lo = 1.001;
+        double hi = 3.0;
+        for (int i = 0; i < 200; i++) {
+            double mid = (lo + hi) / 2.0;
+            double sum = first * (Math.pow(mid, MAX_LEVEL - 1) - 1.0) / (mid - 1.0);
+            if (sum < target) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        double ratio = (lo + hi) / 2.0;
+        for (int level = 1; level < MAX_LEVEL; level++) {
+            fees[level] = Math.round(first * Math.pow(ratio, level - 1));
+        }
+        return fees;
+    }
+
+    /** 生成 1-50 级的累计营收门槛：按同级的升级费的 5 倍估算。 */
+    private static long[] buildRevenueRequired() {
+        long[] fees = buildLevelUpFees();
+        long[] required = new long[MAX_LEVEL];
+        for (int level = 1; level < MAX_LEVEL; level++) {
+            required[level] = Math.multiplyExact(fees[level], 5L);
+        }
+        return required;
+    }
 
     /** 一家玩家公司。 */
-    public static final class Company implements BalanceAccount {
-        public String id;
+    public static final class Company implements BalanceAccount {        public String id;
         public String name;
         public String ceoUuid;
         /** 内部行业代码：mining/farming/manufacturing/trading/service */
@@ -196,7 +232,7 @@ public final class CompanyStore {
             company.name = JsonFile.str(json, "name", "");
             company.ceoUuid = JsonFile.str(json, "ceo", "");
             company.sector = JsonFile.str(json, "sector", "mining");
-            company.level = Cents.clampInt(JsonFile.intVal(json, "level", 1), 1, 5);
+            company.level = Cents.clampInt(JsonFile.intVal(json, "level", 1), 1, MAX_LEVEL);
             company.cashCents = JsonFile.lng(json, "cashCents", 0L);
             company.valuationCents = JsonFile.lng(json, "valuationCents", 500_000L);
             company.employees = Math.max(0, JsonFile.intVal(json, "employees", 0));
@@ -505,8 +541,8 @@ public final class CompanyStore {
     // ── 升级 ──
 
     public void levelUp(Company company, MarketSettings settings) {
-        if (company.level >= 5) {
-            throw new IllegalStateException("公司已经是 5 级了");
+        if (company.level >= MAX_LEVEL) {
+            throw new IllegalStateException("公司已经是满级（" + MAX_LEVEL + " 级）了");
         }
         long fee = LEVEL_UP_FEE[company.level];
         if (company.cashCents < fee) {

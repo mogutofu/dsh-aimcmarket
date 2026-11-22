@@ -461,12 +461,13 @@ public final class CompanyEngine {
             ctx.companies.levelUp(company, ctx.settings);
             StringBuilder message = new StringBuilder();
             message.append("公司「").append(company.name).append("」升到 ").append(company.level).append(" 级！");
-            if (company.level < 5) {
+            if (company.level < CompanyStore.MAX_LEVEL) {
                 long fee = CompanyStore.LEVEL_UP_FEE[company.level];
                 message.append("下一级（").append(company.level + 1).append(" 级）只需升级费 ")
                         .append(Cents.format(fee)).append(" 币（公司现金够就能升，不看员工/营收）。");
             } else {
-                message.append("已经是最高等级（5 级），员工上限 ").append(company.maxEmployees()).append(" 人。");
+                message.append("已经是最高等级（").append(CompanyStore.MAX_LEVEL)
+                        .append(" 级），员工上限 ").append(company.maxEmployees()).append(" 人。");
             }
             return ActionResult.ok(message.toString());
         } catch (IllegalArgumentException | IllegalStateException error) {

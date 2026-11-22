@@ -31,9 +31,9 @@ public final class IpoEngine {
     /** 没指定流通比例时，展示"发行价预估"用的默认比例。 */
     public static final double DEFAULT_FLOAT_RATIO = 0.25;
     /** 上市要求的最低公司等级。 */
-    public static final int MIN_LEVEL = 3;
-    /** 上市要求的公司成立天数（交易日）。 */
-    public static final long MIN_TRADING_DAYS = 7L;
+    public static final int MIN_LEVEL = 10;
+    /** 上市要求的公司成立时间（交易日）：默认 1 个交易日 = 1 小时。 */
+    public static final long MIN_TRADING_DAYS = 1L;
     /** 上市要求的估值下限：50000 币 = 5000000 分。 */
     public static final long MIN_VALUATION_CENTS = 5_000_000L;
     /** CEO 最低持股比例：51%。 */
@@ -99,17 +99,6 @@ public final class IpoEngine {
             if (age < MIN_TRADING_DAYS) {
                 appendWhyNot(whyNot, "公司成立不足 " + MIN_TRADING_DAYS + " 个交易日（当前 "
                         + Math.max(0L, age) + " 个交易日）");
-                return false;
-            }
-            long averageProfit = company.averageDailyProfit((int) MIN_TRADING_DAYS);
-            if (averageProfit <= 0L) {
-                appendWhyNot(whyNot, "最近 " + MIN_TRADING_DAYS + " 个交易日的平均日净利必须为正（当前 "
-                        + Cents.format(averageProfit) + " 币）");
-                return false;
-            }
-            if (company.valuationCents < MIN_VALUATION_CENTS) {
-                appendWhyNot(whyNot, "公司估值不够：当前 " + Cents.format(company.valuationCents)
-                        + " 币，上市需要 " + Cents.format(MIN_VALUATION_CENTS) + " 币");
                 return false;
             }
             long ceoShares = company.sharesOf(company.ceoUuid);
@@ -302,11 +291,7 @@ public final class IpoEngine {
                 return ActionResult.fail("没有待确认的招股书，先 /ex ipo apply <流通比例> 申请上市");
             }
             long day = ctx.tradingDay();
-            long readyDay = company.ipoApplyDay + 1L;
-            if (day < readyDay) {
-                return ActionResult.fail("招股书还在公告期，第 " + readyDay + " 个交易日才能 confirm（还要 "
-                        + (readyDay - day) + " 个交易日）");
-            }
+            long readyDay = company.ipoApplyDay;
             if (company.listed) {
                 company.ipoPending = false;
                 return ActionResult.fail("公司已经上市了（代码 " + company.code + "）");
