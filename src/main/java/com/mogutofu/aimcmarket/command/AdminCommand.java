@@ -66,6 +66,9 @@ public final class AdminCommand {
         admin.then(Commands.literal("takecompany")
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                         .executes(AdminCommand::takeCompany)));
+        admin.then(Commands.literal("givecompany")
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(AdminCommand::giveCompany)));
         admin.then(Commands.literal("stock")
                 .then(Commands.literal("buy")
                         .then(Commands.argument("args", StringArgumentType.greedyString())
@@ -202,6 +205,33 @@ public final class AdminCommand {
             Messages.sendOk(source, (give ? "存入 " : "从 ") + target.name
                     + (give ? " 的活期 " : " 的活期扣除 ") + Messages.money(cents)
                     + "，活期现有 " + Messages.money(target.bank.currentCents));
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "操作失败：" + error.getMessage());
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** {@code /ex admin givecompany <公司> <金额>}：给公司账户发钱（写账本）。 */
+    private static int giveCompany(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String[] parts = splitLast(StringArgumentType.getString(context, "args"));
+        CompanyStore.Company company = ctx().companies.findByName(parts[0]);
+        if (company == null) {
+            Messages.sendFail(source, "找不到公司（用法：/ex admin givecompany <公司名> <金额>）");
+            return 0;
+        }
+        long cents = Cents.parse(parts[1]);
+        if (cents <= 0L) {
+            Messages.sendFail(source, "金额格式不对");
+            return 0;
+        }
+        try {
+            ctx().ledger.issue(company, cents, "admin.givecompany", source.getTextName(), "管理员给公司注资");
+            Messages.sendOk(source, "给 " + company.name + " 发放 " + Messages.money(cents)
+                    + "，公司现有 " + Messages.money(company.cashCents));
         } catch (RuntimeException error) {
             Messages.sendFail(source, "操作失败：" + error.getMessage());
         }
