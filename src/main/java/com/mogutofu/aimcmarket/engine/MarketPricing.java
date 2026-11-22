@@ -15,8 +15,8 @@ import com.mogutofu.aimcmarket.util.Log;
  * 股票不参与缩放（现实股票按真实价、游戏股票按自己的引擎走）。</p>
  */
 public final class MarketPricing {
-    /** 人均货币基准：30000 币。人均低于它时系数固定 1.0。 */
-    public static final long REFERENCE_AVG_CENTS = 3_000_000L;
+    /** 人均货币基准：1000000 币。人均低于它时系数固定 1.0。 */
+    public static final long REFERENCE_AVG_CENTS = 100_000_000L;
     /** 弹性：人均货币涨 10 倍，物价涨 10^ELASTICITY 倍。 */
     public static final double ELASTICITY = 1.0;
     /** 系数上下限。 */
