@@ -242,6 +242,10 @@ public final class CompanyStore {
             company.reputation = Cents.clampDouble(JsonFile.dbl(json, "reputation", 1.0), 0.6, 1.4);
             company.createdDay = JsonFile.lng(json, "createdDay", 0L);
             company.createdMs = JsonFile.lng(json, "createdMs", 0L);
+            if (company.createdMs <= 0L) {
+                // 老数据没有现实时间戳：视为早就成立了，避免被 1 小时门槛卡住
+                company.createdMs = System.currentTimeMillis() - 3_600_000L;
+            }
             company.lastSettleDay = JsonFile.lng(json, "lastSettleDay", -1L);
             company.lastDividendDay = JsonFile.lng(json, "lastDividendDay", -1L);
             company.dividendRatio = Cents.clampDouble(JsonFile.dbl(json, "dividendRatio", 0.0), 0.0, 0.8);
