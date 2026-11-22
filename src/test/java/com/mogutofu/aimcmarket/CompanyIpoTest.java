@@ -220,6 +220,7 @@ class CompanyIpoTest {
         CompanyStore.Company company = createCompany(ctx, ceo, "上市测试公司");
         company.level = IpoEngine.MIN_LEVEL;
         company.createdDay = ctx.tradingDay() - IpoEngine.MIN_TRADING_DAYS;
+        company.createdMs = System.currentTimeMillis() - 3_600_000L;
         company.valuationCents = 6_000_000L;
         company.profitHistory.clear();
         for (int i = 0; i < (int) IpoEngine.MIN_TRADING_DAYS; i++) {

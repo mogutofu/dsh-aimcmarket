@@ -87,7 +87,12 @@ class GovernmentTest {
     void welfareRejectedWhenBudgetInsufficient() {
         AimcContext ctx = newContext();
         Account account = newAccount(ctx, UUID_A, "TesterA");
-        assertEquals(0L, ctx.government.budgetCents(), "默认预算应为 0");
+        // 加载时会做 80000 币预算保底，这里先清空，验证"预算不足"分支
+        long floor = ctx.government.budgetCents();
+        if (floor > 0L) {
+            ctx.ledger.burn(ctx.government.budgetAccount(), floor, "test.drain", "Tester", "清空预算");
+        }
+        assertEquals(0L, ctx.government.budgetCents(), "清空后预算应为 0");
         long walletBefore = account.balanceCents();
 
         ActionResult result = GovernmentEngine.applyDecision(ctx,
@@ -179,7 +184,7 @@ class GovernmentTest {
     // ══════════════════════════════════════════════════════════════
 
     @Test
-    void rateCutLowerPolicyRateByExactly25bpAndCooldown() {
+    void rateCutLowerPolicyRateByExactly25bpWithoutCooldown() {
         AimcContext ctx = newContext();
         newAccount(ctx, UUID_A, "TesterA");
         double before = ctx.government.policyRate;
@@ -194,8 +199,8 @@ class GovernmentTest {
         assertEquals(1, ctx.government.policies().size(), "降息应记录一条政策");
 
         ActionResult again = GovernmentEngine.applyDecision(ctx, decision("rate_cut", "{\"bp\":25}"), false);
-        assertFalse(again.ok, "同方向 6 个交易日内再次降息应被冷却拒绝");
-        assertEquals(before - 0.0025, ctx.government.policyRate, 1.0e-12, "被拒后利率不应再变");
+        assertTrue(again.ok, "冷却已取消，同方向可以连续降息：" + again.message);
+        assertEquals(before - 0.005, ctx.government.policyRate, 1.0e-12, "第二次降息应继续下调 25bp");
     }
 
     // ══════════════════════════════════════════════════════════════
