@@ -4,9 +4,12 @@ import com.mogutofu.aimcmarket.AimcmarketMod;
 import com.mogutofu.aimcmarket.config.MarketConfig;
 import com.mogutofu.aimcmarket.data.Account;
 import com.mogutofu.aimcmarket.data.AimcContext;
+import com.mogutofu.aimcmarket.data.CompanyStore;
 import com.mogutofu.aimcmarket.data.GovernmentStore;
 import com.mogutofu.aimcmarket.data.Ledger;
 import com.mogutofu.aimcmarket.data.MarketStore;
+import com.mogutofu.aimcmarket.engine.ActionResult;
+import com.mogutofu.aimcmarket.engine.FinanceService;
 import com.mogutofu.aimcmarket.engine.GovernmentEngine;
 import com.mogutofu.aimcmarket.ui.Messages;
 import com.mogutofu.aimcmarket.util.Cents;
@@ -54,6 +57,22 @@ public final class AdminCommand {
         admin.then(Commands.literal("take")
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                         .executes(context -> money(context, false))));
+        admin.then(Commands.literal("takebank")
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> bankMoney(context, false))));
+        admin.then(Commands.literal("givebank")
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(context -> bankMoney(context, true))));
+        admin.then(Commands.literal("takecompany")
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(AdminCommand::takeCompany)));
+        admin.then(Commands.literal("stock")
+                .then(Commands.literal("buy")
+                        .then(Commands.argument("args", StringArgumentType.greedyString())
+                                .executes(context -> adminStock(context, true))))
+                .then(Commands.literal("sell")
+                        .then(Commands.argument("args", StringArgumentType.greedyString())
+                                .executes(context -> adminStock(context, false)))));
         admin.then(Commands.literal("freeze")
                 .then(Commands.argument("frozen", BoolArgumentType.bool())
                         .executes(AdminCommand::freeze)));
@@ -147,6 +166,120 @@ public final class AdminCommand {
         } catch (RuntimeException error) {
             Messages.sendFail(source, "操作失败：" + error.getMessage());
         }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** {@code /ex admin takebank|givebank <玩家> <金额>}：直接动活期存款，不走现金。 */
+    private static int bankMoney(CommandContext<CommandSourceStack> context, boolean give) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String[] parts = splitLast(StringArgumentType.getString(context, "args"));
+        Account target = ctx().accounts.findByName(parts[0]).orElse(null);
+        if (target == null) {
+            Messages.sendFail(source, "找不到玩家（用法：/ex admin " + (give ? "givebank" : "takebank")
+                    + " <玩家> <金额>）");
+            return 0;
+        }
+        long cents = Cents.parse(parts[1]);
+        if (cents <= 0L) {
+            Messages.sendFail(source, "金额格式不对");
+            return 0;
+        }
+        String operator = source.getTextName();
+        try {
+            if (give) {
+                ctx().ledger.issue(target.bankAccount(), cents, "admin.givebank", operator, "管理员存入活期");
+            } else {
+                if (target.bank.currentCents < cents) {
+                    Messages.sendFail(source, "活期余额不足（活期 " + Messages.money(target.bank.currentCents) + "）");
+                    return 0;
+                }
+                ctx().ledger.burn(target.bankAccount(), cents, "admin.takebank", operator, "管理员扣除活期");
+            }
+            Messages.sendOk(source, (give ? "存入 " : "从 ") + target.name
+                    + (give ? " 的活期 " : " 的活期扣除 ") + Messages.money(cents)
+                    + "，活期现有 " + Messages.money(target.bank.currentCents));
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "操作失败：" + error.getMessage());
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** {@code /ex admin takecompany <公司> <金额>}：扣公司账上现金。 */
+    private static int takeCompany(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String[] parts = splitLast(StringArgumentType.getString(context, "args"));
+        CompanyStore.Company company = ctx().companies.findByName(parts[0]);
+        if (company == null) {
+            Messages.sendFail(source, "找不到公司（用法：/ex admin takecompany <公司名> <金额>）");
+            return 0;
+        }
+        long cents = Cents.parse(parts[1]);
+        if (cents <= 0L) {
+            Messages.sendFail(source, "金额格式不对");
+            return 0;
+        }
+        if (company.cashCents < cents) {
+            Messages.sendFail(source, "公司现金不足（现有 " + Messages.money(company.cashCents) + "）");
+            return 0;
+        }
+        try {
+            ctx().ledger.burn(company, cents, "admin.takecompany", source.getTextName(), "管理员扣除公司资金");
+            Messages.sendOk(source, "从 " + company.name + " 扣除 " + Messages.money(cents)
+                    + "，公司现有 " + Messages.money(company.cashCents));
+        } catch (RuntimeException error) {
+            Messages.sendFail(source, "操作失败：" + error.getMessage());
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /** {@code /ex admin stock buy|sell <玩家> <代码> <股数>}：管理员代玩家买卖股票。 */
+    private static int adminStock(CommandContext<CommandSourceStack> context, boolean buying) {
+        CommandSourceStack source = context.getSource();
+        if (!ready(source)) {
+            return 0;
+        }
+        String raw = StringArgumentType.getString(context, "args").trim();
+        String[] tokens = raw.split("\\s+");
+        if (tokens.length < 3) {
+            Messages.sendFail(source, "用法：/ex admin stock " + (buying ? "buy" : "sell") + " <玩家> <代码> <股数>");
+            return 0;
+        }
+        long shares;
+        try {
+            shares = Long.parseLong(tokens[tokens.length - 1]);
+        } catch (NumberFormatException error) {
+            Messages.sendFail(source, "股数要写整数");
+            return 0;
+        }
+        String code = tokens[tokens.length - 2];
+        String playerName = String.join(" ", java.util.Arrays.copyOf(tokens, tokens.length - 2));
+        Account target = ctx().accounts.findByName(playerName).orElse(null);
+        if (target == null) {
+            Messages.sendFail(source, "找不到玩家：" + playerName);
+            return 0;
+        }
+        if (shares <= 0L) {
+            Messages.sendFail(source, "股数必须大于 0");
+            return 0;
+        }
+        ActionResult result = buying
+                ? FinanceService.buyStock(ctx(), target, code, shares)
+                : FinanceService.sellStock(ctx(), target, code, shares);
+        if (result == null) {
+            Messages.sendFail(source, "交易失败");
+            return 0;
+        }
+        if (!result.ok) {
+            Messages.sendFail(source, result.message);
+            return 0;
+        }
+        Messages.sendOk(source, "[代 " + target.name + "] " + result.message);
         return Command.SINGLE_SUCCESS;
     }
 
