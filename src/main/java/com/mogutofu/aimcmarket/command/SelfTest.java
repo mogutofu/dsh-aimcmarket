@@ -153,7 +153,7 @@ public final class SelfTest {
             ctx.market.addImpact(item.id, item.liquidity * 10L);
             PriceEngine.tickPrices(ctx);
             long after = ctx.market.price(item.id);
-            check(after < before, "净买入冲击应该压低价格（" + before + " → " + after + "）");
+            check(after > before, "净买入冲击应该抬高价格（" + before + " → " + after + "）");
             check(after >= Math.max(1L, item.basePriceCents / 4L), "冲击后价格低于下限");
         });
         runner.test("股票价格引擎 100 tick 不越界", () -> {

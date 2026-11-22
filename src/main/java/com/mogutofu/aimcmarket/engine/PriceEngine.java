@@ -30,10 +30,10 @@ import java.util.Map;
 public final class PriceEngine {
     /** 单 tick 冲击绝对上限（任务书 3.3：±0.08）。 */
     private static final double IMPACT_LIMIT = 0.08;
-    /** 商品冲击系数：impact = -0.02 × 净买入额 / 有效流动性。 */
-    private static final double GOODS_IMPACT_FACTOR = -0.02;
+    /** 商品冲击系数：impact = +0.02 × 净买入额 / 有效流动性（买推涨、卖压跌）。 */
+    private static final double GOODS_IMPACT_FACTOR = 0.02;
     /** 股票冲击系数：与商品同系数，用流通市值折算的流动性。 */
-    private static final double STOCK_IMPACT_FACTOR = -0.02;
+    private static final double STOCK_IMPACT_FACTOR = 0.02;
     /** 商品价格兜底夹取比例（配置坏掉时用）。 */
     private static final double DEFAULT_FLOOR_RATIO = 0.25;
     private static final double DEFAULT_CEILING_RATIO = 4.0;

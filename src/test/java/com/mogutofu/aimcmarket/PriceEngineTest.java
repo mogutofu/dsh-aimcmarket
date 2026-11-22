@@ -92,9 +92,9 @@ class PriceEngineTest {
     }
 
     @Test
-    void impactPushesPriceDownWithinOneTickAndIsCapped() {
+    void impactPushesPriceUpWithinOneTickAndIsCapped() {
         AimcContext ctx = newContext();
-        // 挑波动率最小的商品，把随机噪声压到最小，这样"价格下降"是确定性的方向断言。
+        // 挑波动率最小的商品，把随机噪声压到最小，这样"价格上涨"是确定性的方向断言。
         MarketStore.CatalogItem target = null;
         for (MarketStore.CatalogItem item : ctx.market.enabledItems()) {
             if (target == null || item.volatility < target.volatility) {
@@ -110,10 +110,10 @@ class PriceEngineTest {
         PriceEngine.tickPrices(ctx);
         long after = ctx.market.price(target.id);
 
-        assertTrue(after < before, "净买入冲击后价格应下降：" + before + " → " + after
+        assertTrue(after > before, "净买入冲击后价格应上升：" + before + " → " + after
                 + "（" + target.id + "，波动率 " + target.volatility + "）");
-        assertTrue(after >= Math.round(before * 0.75),
-                "单 tick 跌幅不应过大（宽松上限 25%）：" + before + " → " + after);
+        assertTrue(after <= Math.round(before * 1.25),
+                "单 tick 涨幅不应过大（宽松上限 25%）：" + before + " → " + after);
         assertTrue(ctx.market.price(target.id) > 0L, "冲击后价格仍必须为正");
     }
 
