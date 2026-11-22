@@ -61,7 +61,7 @@ public final class TradeService {
             }
             double spread = 0.02;
             if (ctx.settings != null && Double.isFinite(ctx.settings.askSpread)) {
-                spread = Cents.clampDouble(ctx.settings.askSpread, 0.0, 1.0);
+                spread = Cents.clampDouble(ctx.settings.askSpread, 0.0, 5.0);
             }
             long raw = ctx.market.askRawCents(item.id, spread);
             return MarketPricing.priceCents(ctx, applyPolicyMultiplier(ctx, item.id, raw));
