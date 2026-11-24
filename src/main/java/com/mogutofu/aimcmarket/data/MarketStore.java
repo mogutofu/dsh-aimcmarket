@@ -84,6 +84,8 @@ public final class MarketStore {
 
     /** 本 tick 的净买入额（分）：TradeService 记，PriceEngine 读，用来算冲击。 */
     private final Map<String, Long> tickImpact = new LinkedHashMap<>();
+    /** 启动时的基准价锚点：自适应基准价只能在它的 0.5~2 倍之间移动，避免越飘越远。 */
+    private final Map<String, Long> baseAnchor = new LinkedHashMap<>();
 
     private long makerCents;
     private long feePoolCents;
@@ -242,6 +244,10 @@ public final class MarketStore {
         if (catalog.isEmpty()) {
             Log.warn("商品目录为空，市场功能会拒绝所有买卖（检查 " + catalogFile + "）");
         }
+        // 记录本次启动的基准价锚点（每件商品只记第一次）
+        for (CatalogItem item : catalog.values()) {
+            baseAnchor.putIfAbsent(item.id, item.basePriceCents);
+        }
     }
 
     /** /ex admin reload：重新读目录，保留已有价格。 */
@@ -325,9 +331,39 @@ public final class MarketStore {
         return changed;
     }
 
+    /**
+     * 基准价跟随行情：今日跌得多，基准价就下调；涨得多就上调。
+     *
+     * <p>每天最多向现价靠 5%，并且限制在启动锚点的 0.5~2 倍之间，避免基准价无限漂移。</p>
+     *
+     * @return 改动条数
+     */
+    public int nudgeBasePrices(double alpha) {
+        int changed = 0;
+        for (CatalogItem item : new ArrayList<>(catalog.values())) {
+            if (!item.enabled) {
+                continue;
+            }
+            long anchor = baseAnchor.getOrDefault(item.id, item.basePriceCents);
+            long price = prices.getOrDefault(item.id, item.basePriceCents);
+            long next = Math.round(item.basePriceCents + (price - item.basePriceCents) * alpha);
+            next = Cents.clamp(next, Math.max(1L, anchor / 2L), Math.max(2L, anchor * 2L));
+            if (next == item.basePriceCents) {
+                continue;
+            }
+            catalog.put(item.id, new CatalogItem(item.id, item.nameZh, new ArrayList<>(item.aliases),
+                    next, item.volatility, item.liquidity, item.enabled));
+            changed++;
+        }
+        if (changed > 0) {
+            persistCatalog();
+            Log.info("基准价跟随行情调整了 " + changed + " 项");
+        }
+        return changed;
+    }
+
     /** 把别名重新绑定到指定商品（先从其它商品上摘掉，避免"一个名字两个物品"）。 */
-    public CatalogItem rebindAlias(String id, String alias) {
-        removeAliasEverywhere(alias);
+    public CatalogItem rebindAlias(String id, String alias) {        removeAliasEverywhere(alias);
         return addAlias(id, alias);
     }
 

@@ -33,7 +33,7 @@ public final class MarketSettings {
     public double bidRatio = 0.12;
     public long maxOrderValueCents = 500_000L; // 5000 币
     public int maxItemPerOrder = 576;
-    public double priceTheta = 0.00116;
+    public double priceTheta = 0.000496;
     public double maxImpactPerTick = 0.20;
     public double priceFloorRatio = 0.25;
     public double priceCeilingRatio = 4.0;
