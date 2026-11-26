@@ -244,9 +244,43 @@ public final class MarketStore {
         if (catalog.isEmpty()) {
             Log.warn("商品目录为空，市场功能会拒绝所有买卖（检查 " + catalogFile + "）");
         }
-        // 记录本次启动的基准价锚点（每件商品只记第一次）
+        loadBaseAnchors();
+    }
+
+    /** 读取固定的基准价锚点；首次运行或新增商品时按当前基准价补写。 */
+    private void loadBaseAnchors() {
+        Path anchorFile = catalogFile.resolveSibling("base-anchor.json");
+        JsonObject root = JsonFile.readObject(anchorFile);
+        boolean dirty = root == null;
+        if (root != null) {
+            for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
+                try {
+                    long value = entry.getValue().getAsLong();
+                    if (value > 0L) {
+                        baseAnchor.put(entry.getKey(), value);
+                    }
+                } catch (RuntimeException ignored) {
+                    // 坏数据忽略
+                }
+            }
+        }
         for (CatalogItem item : catalog.values()) {
-            baseAnchor.putIfAbsent(item.id, item.basePriceCents);
+            if (!baseAnchor.containsKey(item.id)) {
+                baseAnchor.put(item.id, item.basePriceCents);
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            JsonObject out = new JsonObject();
+            for (Map.Entry<String, Long> entry : baseAnchor.entrySet()) {
+                out.addProperty(entry.getKey(), entry.getValue());
+            }
+            try {
+                Files.createDirectories(anchorFile.getParent());
+                Files.writeString(anchorFile, out.toString(), StandardCharsets.UTF_8);
+            } catch (IOException error) {
+                Log.warn("写入基准价锚点失败：" + error.getMessage());
+            }
         }
     }
 
@@ -347,6 +381,9 @@ public final class MarketStore {
             long anchor = baseAnchor.getOrDefault(item.id, item.basePriceCents);
             long price = prices.getOrDefault(item.id, item.basePriceCents);
             long next = Math.round(item.basePriceCents + (price - item.basePriceCents) * alpha);
+            // 每天最多动 10%，再夹到锚点的 0.5~2 倍
+            long maxStep = Math.max(1L, Math.round(item.basePriceCents * 0.10));
+            next = Math.max(item.basePriceCents - maxStep, Math.min(item.basePriceCents + maxStep, next));
             next = Cents.clamp(next, Math.max(1L, anchor / 2L), Math.max(2L, anchor * 2L));
             if (next == item.basePriceCents) {
                 continue;

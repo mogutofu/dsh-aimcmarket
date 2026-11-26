@@ -107,7 +107,7 @@ public final class MarketTicker {
             lastDay = today;
             // 基准价跟随上一交易日的行情走：跌得多就下调，涨得多就上调
             try {
-                ctx.market.nudgeBasePrices(0.05);
+                ctx.market.nudgeBasePrices(0.10);
             } catch (RuntimeException error) {
                 Log.warn("调整基准价失败", error);
             }
